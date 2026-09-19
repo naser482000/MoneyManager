@@ -3,55 +3,270 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>مدیریت مالی</title>
+<title>مدیریت مالی ناصر نیک نیا</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:Tahoma,sans-serif}
-body{background:#0f172a;color:#f1f5f9;min-height:100vh;direction:rtl}
-#login{display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:100vh;padding:20px}
+
+/* ============ متغیر عرض ============ */
+:root{
+    --app-width: 60%;      /* 👈 اینو عوض کن: 50%, 60%, 70% */
+    --app-min: 380px;      /* حداقل عرض */
+    --app-max: 700px;      /* حداکثر عرض */
+}
+
+body{
+    background:#0a0f1a;
+    color:#f1f5f9;
+    min-height:100vh;
+    direction:rtl;
+}
+
+/* ============ کانتینر یکسان برای همه ============ */
+.wrap{
+    width: var(--app-width);
+    min-width: var(--app-min);
+    max-width: var(--app-max);
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* ============ لاگین ============ */
+#login{
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    min-height:100vh;
+    padding:20px;
+}
 #login h1{font-size:60px;margin-bottom:10px}
 #login h2{color:#0ea5e9;margin-bottom:30px;font-size:20px}
-.inp{width:100%;max-width:320px;padding:12px;margin-bottom:10px;background:#1e293b;color:#fff;border:1px solid #334155;border-radius:10px;font-size:15px}
-.btn{width:100%;max-width:320px;padding:12px;border:none;border-radius:10px;font-size:15px;font-weight:bold;color:#fff;cursor:pointer;margin-bottom:8px;font-family:inherit}
-.b1{background:#1e40af}.b2{background:#0ea5e9}.b3{background:#22c55e}.b4{background:#ef4444}.b5{background:#f59e0b}
-#app{display:none;min-height:100vh;padding-bottom:80px}
-.hd{background:#1e40af;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:10}
+
+.inp{
+    width:100%;
+    max-width:100%;
+    padding:12px;
+    margin-bottom:10px;
+    background:#1e293b;
+    color:#fff;
+    border:1px solid #334155;
+    border-radius:10px;
+    font-size:15px;
+}
+.btn{
+    width:100%;
+    max-width:100%;
+    padding:12px;
+    border:none;
+    border-radius:10px;
+    font-size:15px;
+    font-weight:bold;
+    color:#fff;
+    cursor:pointer;
+    margin-bottom:8px;
+    font-family:inherit;
+}
+.b1{background:#1e40af}
+.b2{background:#0ea5e9}
+.b3{background:#22c55e}
+.b4{background:#ef4444}
+.b5{background:#f59e0b}
+
+/* ============ اپ اصلی ============ */
+#app{
+    display:none;
+    min-height:100vh;
+    padding-bottom:80px;
+    background:#0f172a;
+    box-shadow:0 0 60px rgba(0,0,0,.8);
+    border-left:1px solid #1e293b;
+    border-right:1px solid #1e293b;
+    position:relative;
+}
+
+/* ============ هدر ============ */
+.hd{
+    background:#1e40af;
+    padding:12px 16px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    position:sticky;
+    top:0;
+    z-index:10;
+}
 .hd b{font-size:16px}
-.nav{position:fixed;bottom:0;left:0;right:0;background:#1e293b;border-top:1px solid #334155;display:flex;z-index:10}
-.nav div{flex:1;text-align:center;padding:10px 4px;color:#94a3b8;font-size:11px;cursor:pointer}
+
+/* ============ نوار پایین ============ */
+.nav{
+    position:fixed;
+    bottom:0;
+    background:#1e293b;
+    border-top:1px solid #334155;
+    display:flex;
+    z-index:10;
+    box-shadow:0 -4px 20px rgba(0,0,0,.4);
+    /* وسط‌چین با همون عرض اپ */
+    left:50%;
+    transform:translateX(-50%);
+    width: var(--app-width);
+    min-width: var(--app-min);
+    max-width: var(--app-max);
+}
+.nav div{
+    flex:1;
+    text-align:center;
+    padding:10px 4px;
+    color:#94a3b8;
+    font-size:11px;
+    cursor:pointer;
+    transition:color .2s;
+}
 .nav div.on{color:#0ea5e9}
 .nav div span{display:block;font-size:22px;margin-bottom:2px}
+
+/* ============ صفحات ============ */
 .pg{display:none;padding:16px}
 .pg.on{display:block}
-.card{background:#1e293b;border-radius:12px;padding:14px;margin-bottom:10px;border:1px solid #334155}
+
+/* ============ کارت‌ها ============ */
+.card{
+    background:#1e293b;
+    border-radius:12px;
+    padding:14px;
+    margin-bottom:10px;
+    border:1px solid #334155;
+}
 .card h3{font-size:14px;margin-bottom:10px;color:#0ea5e9}
-.row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #334155;font-size:13px}
+
+.row{
+    display:flex;
+    justify-content:space-between;
+    padding:8px 0;
+    border-bottom:1px solid #334155;
+    font-size:13px;
+}
 .row:last-child{border:none}
+
+/* ============ آمار ============ */
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
 .stat{background:#1e293b;border-radius:12px;padding:12px}
 .stat small{color:#94a3b8;font-size:10px}
 .stat b{display:block;font-size:18px;margin-top:4px}
-.inc{color:#22c55e}.exp{color:#ef4444}.net{color:#0ea5e9}
-.tx{background:#1e293b;border-radius:10px;padding:10px;margin-bottom:8px;border-right:3px solid #0ea5e9;font-size:13px}
-.tx.i{border-color:#22c55e}.tx.e{border-color:#ef4444}
+.inc{color:#22c55e}
+.exp{color:#ef4444}
+.net{color:#0ea5e9}
+
+/* ============ تراکنش ============ */
+.tx{
+    background:#1e293b;
+    border-radius:10px;
+    padding:10px;
+    margin-bottom:8px;
+    border-right:3px solid #0ea5e9;
+    font-size:13px;
+}
+.tx.i{border-color:#22c55e}
+.tx.e{border-color:#ef4444}
 .tx .t1{display:flex;justify-content:space-between;margin-bottom:4px}
 .tx .t2{color:#94a3b8;font-size:11px}
-label{display:block;font-size:12px;color:#94a3b8;margin-bottom:4px;margin-top:8px}
-input,select{width:100%;padding:10px;background:#334155;color:#fff;border:1px solid #334155;border-radius:8px;font-family:inherit;font-size:14px}
-#md{position:fixed;inset:0;background:rgba(0,0,0,.8);display:none;align-items:center;justify-content:center;padding:16px;z-index:100}
+
+/* ============ فرم ============ */
+label{
+    display:block;
+    font-size:12px;
+
+color:#94a3b8;
+    margin-bottom:4px;
+    margin-top:8px;
+}
+input,select{
+    width:100%;
+    padding:10px;
+    background:#334155;
+    color:#fff;
+    border:1px solid #334155;
+    border-radius:8px;
+    font-family:inherit;
+    font-size:14px;
+    outline:none;
+}
+input:focus,select:focus{border-color:#0ea5e9}
+
+/* ============ مودال ============ */
+#md{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.8);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:16px;
+    z-index:100;
+    backdrop-filter:blur(4px);
+}
 #md.on{display:flex}
-#mc{background:#1e293b;border-radius:16px;padding:20px;width:100%;max-width:400px;max-height:85vh;overflow-y:auto}
+#mc{
+    background:#1e293b;
+    border-radius:16px;
+    padding:20px;
+    width:100%;
+    max-width:400px;
+    max-height:85vh;
+    overflow-y:auto;
+}
 #mc h3{margin-bottom:14px;font-size:16px}
-#toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:#22c55e;color:#fff;padding:12px 20px;border-radius:10px;font-weight:bold;opacity:0;transition:opacity .3s;z-index:200;pointer-events:none;font-size:13px}
+
+/* ============ Toast ============ */
+#toast{
+    position:fixed;
+    bottom:100px;
+    left:50%;
+    transform:translateX(-50%);
+    background:#22c55e;
+    color:#fff;
+    padding:12px 20px;
+    border-radius:10px;
+    font-weight:bold;
+    opacity:0;
+    transition:opacity .3s;
+    z-index:200;
+    pointer-events:none;
+    font-size:13px;
+    max-width:90%;
+    text-align:center;
+}
 #toast.on{opacity:1}
 #toast.err{background:#ef4444}
-.empty{text-align:center;padding:30px;color:#64748b;font-size:13px}
+
+/* ============ Empty ============ */
+.empty{
+    text-align:center;
+    padding:30px;
+    color:#64748b;
+    font-size:13px;
+}
+
+/* ============ اسکرول‌بار ============ */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#334155;border-radius:3px}
+
+/* ============ موبایل: تمام صفحه ============ */
+@media (max-width:768px){
+    :root{
+        --app-width: 100%;
+        --app-min: 0px;
+        --app-max: 100%;
+    }
+}
 </style>
 </head>
 <body>
 
-<div id="login">
+<div id="login"class="wrap">
 <h1>💰</h1>
-<h2>مدیریت مالی</h2>
+<h2 style="text-align:center;width:100%">مدیریت مالی ناصرنیک نیا</h2>
 <input class="inp" id="lu" value="admin" placeholder="نام کاربری">
 <input class="inp" id="lp" type="password" value="admin" placeholder="رمز">
 <button class="btn b1" onclick="login()">🔓 ورود</button>
@@ -59,10 +274,11 @@ input,select{width:100%;padding:10px;background:#334155;color:#fff;border:1px so
 <div style="margin-top:30px;color:#64748b;font-size:12px" id="ld"></div>
 </div>
 
-<div id="app">
+<div id="app"class="wrap">
 <div class="hd">
-<div><b>💰 مدیریت مالی</b><div style="font-size:12px;opacity:.9" id="hu"></div></div>
-<button class="btn" style="width:40px;max-width:40px;background:rgba(255,255,255,.15);padding:8px" onclick="openSync()">☁️</button>
+<div style="font-size:12px;opacity:.9;text-align:right"id="hu">admin</div>
+<div><b>💰 مدیریت مالی ناصرنیک نیا</b><div style="font-size:12px;opacity:.9" id="hu"></div></div>
+<button class="btn" style="width:40px;max-width:40px;background:rgba(255,255,155,.15);padding:8px" onclick="openSync()">☁️</button>
 </div>
 
 <div class="pg on" id="pg-dash">
@@ -130,7 +346,7 @@ input,select{width:100%;padding:10px;background:#334155;color:#fff;border:1px so
 var DB={key:'mm_db_v1',data:null};
 DB.def=function(){return{
 users:[{id:1,username:'admin',password:'admin',fullName:'مدیر'}],
-accounts:[{id:1,name:'بانک ملت',currency:'IRT',initial:}],
+accounts:[{id:1,name:'بانک ملت',currency:'IRT',initial:5000000}],
 sources:[{id:1,name:'حقوق'},{id:2,name:'فریلنس'}],
 categories:[{id:1,name:'خوراک'},{id:2,name:'حمل ونقل'},{id:3,name:'قبض'},{id:4,name:'خرید'}],
 transactions:[],reminders:[],currentUser:null,
@@ -258,7 +474,7 @@ openM('<h3>➕ تراکنش جدید</h3>'+
 '<div id="cg" style="display:none"><label>دسته</label><select id="tc2">'+co+'</select></div>'+
 '<label>تاریخ شمسی</label><input id="tdt" value="'+J.todayStr()+'">'+
 '<label>توضیح</label><input id="tds">'+
-'<button class="btn b3" style="max-width:100%;margin-top:14px" onclick="saveTx()">💾 ذخیره</button>');
+'<button class="btn b3" style="max-width:50%;margin-top:14px" onclick="saveTx()">💾 ذخیره</button>');
 }
 function toggleF(){
 var t=document.getElementById('tt').value;
@@ -427,7 +643,7 @@ openM('<h3>☁️ بکاپ</h3>'+
 '<button class="btn b3" style="max-width:100%;margin-bottom:8px" onclick="expData();closeM()">📥 دانلود بکاپ</button>'+
 '<button class="btn b5" style="max-width:100%" onclick="impData();closeM()">⬆️ بارگذاری</button>');
 }
-
+    
 function refresh(){rDash();rTx();rRem();rSet();}
 
 window.addEventListener('load',function(){
