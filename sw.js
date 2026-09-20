@@ -1,30 +1,60 @@
-/* Service Worker - کار آفلاین */
-const CACHE = 'moneymanager-v1';
-const FILES = ['./', './index.html', './manifest.json'];
+// Service Worker - مدیریت مالی ناصر نیک‌نیا
+const CACHE_NAME = 'naser-finance-v1';
+const FILES_TO_CACHE = [
+  './',
+  './index.html',
+  './manifest.json'
+];
 
-self.addEventListener('install', (e) => {
-    e.waitUntil(
-        caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())
-    );
+// نصب
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(FILES_TO_CACHE))
+      .then(() => self.skipWaiting())
+  );
 });
 
-self.addEventListener('activate', (e) => {
-    e.waitUntil(
-        caches.keys().then(keys => 
-            Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-        ).then(() => self.clients.claim())
-    );
+// فعال‌سازی
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(
+        keys.filter(k => k !== CACHE_NAME)
+            .map(k => caches.delete(k))
+      )
+    ).then(() => self.clients.claim())
+  );
 });
 
-self.addEventListener('fetch', (e) => {
-    e.respondWith(
-        caches.match(e.request).then(r => r || fetch(e.request).then(resp => {
-            // کش کردن منابع جدید
-            if (e.request.method === 'GET') {
-                const clone = resp.clone();
-                caches.open(CACHE).then(c => c.put(e.request, clone));
-            }
+// fetch
+self.addEventListener('fetch', (event) => {
+  // فقط GET ها
+  if (event.request.method !== 'GET') return;
+  
+  // API ها رو کش نکن
+  if (event.request.url.includes('api.') || 
+      event.request.url.includes('kavenegar') ||
+      event.request.url.includes('coingecko') ||
+      event.request.url.includes('er-api')) {
+    return;
+  }
+  
+  event.respondWith(
+    caches.match(event.request)
+      .then(response => {
+        if (response) return response;
+        
+        return fetch(event.request).then(resp => {
+          if (!resp || resp.status !== 200 || resp.type !== 'basic') {
             return resp;
-        }).catch(() => caches.match('./index.html')))
-    );
+          }
+          const clone = resp.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+          return resp;
+        }).catch(() => {
+          return caches.match('./index.html');
+        });
+      })
+  );
 });
