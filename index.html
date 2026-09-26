@@ -177,9 +177,11 @@ canvas{display:block;width:100%;max-width:100%}
 </div>
 <button class="btn b1" onclick="doLogin()" style="margin-top:8px">🔓 ورود</button>
 <button class="fp-btn" id="fpBtn" onclick="fpLogin()" title="ورود با اثر انگشت">👆</button>
+<button class="btn b3" onclick="syncFromCloudLogin()" style="margin-top:8px">🐙 دریافت اطلاعات از GitHub</button>
 <button class="btn b6" onclick="showNewUser()" style="margin-top:8px">➕ کاربر جدید</button>
 <button class="btn b6" onclick="showForgotPwd()" style="margin-top:8px;font-size:13px">🔑 رمز را فراموش کرده‌ام</button>
 <button class="btn b6" onclick="showUsersDebug()" style="margin-top:8px;font-size:11px">🔍 کاربران این دستگاه</button>
+<div id="sync-status" style="margin-top:12px"></div>
 <div style="margin-top:24px;color:var(--st);font-size:11px;font-weight:600" id="ld"></div>
 </div>
 </div>
@@ -193,7 +195,7 @@ canvas{display:block;width:100%;max-width:100%}
 <div class="hd no-print">
 <div class="left">
 <button class="avatar-btn" id="hd-avatar" onclick="showProfile()">👤</button>
-<button class="ico" onclick="toggleTheme()" title="تم">🌓</button>
+<button class="ico" onclick="toggleTheme()">🌓</button>
 </div>
 <div class="t">
 <b id="hd-title">💰 مدیریت مالی</b>
@@ -399,6 +401,7 @@ canvas{display:block;width:100%;max-width:100%}
 </div>
 <div class="card-body">
 <button class="btn b3" style="margin-bottom:8px" onclick="showGitHubSettings()">🐙 سینک GitHub (بدون تحریم)</button>
+<button class="btn b1" style="margin-bottom:8px" onclick="forceSyncNow()">🔄 سینک فوری (دریافت+ارسال)</button>
 <button class="btn b2" style="margin-bottom:8px" onclick="showBackups()">📚 بکاپ‌های خودکار</button>
 <button class="btn b3" style="margin-bottom:8px" onclick="expData()">📥 دانلود JSON</button>
 <button class="btn b5" style="margin-bottom:8px" onclick="impData()">⬆️ بارگذاری بکاپ</button>
@@ -426,8 +429,6 @@ canvas{display:block;width:100%;max-width:100%}
 <script>
 var SECRET_KEY='naser_family_2026_secure_key_!@#';
 var DB={key:'naser_family_db_permanent',data:null};
-
-// ✅ migration گسترده (اطلاعات قدیمی حفظ می‌شود)
 DB.autoMigrate=function(){var oldKeys=['mm_family_v13','mm_family_v12','mm_family_v11','mm_family_v10','mm_family_v9','mm_family_v8','mm_family_v7','mm_family_v6','mm_family_v5','mm_family_v4','mm_family_v3','mm_family_v2','mm_family_v1','naser_family_db','money_manage','mm_db','money_app','family_db'];var c=localStorage.getItem(this.key);if(c)return false;for(var i=0;i<oldKeys.length;i++){var o=localStorage.getItem(oldKeys[i]);if(o){localStorage.setItem(this.key,o);return true;}}return false;};
 DB.encrypt=function(obj){try{return CryptoJS.AES.encrypt(JSON.stringify(obj),SECRET_KEY).toString();}catch(e){return JSON.stringify(obj);}};
 DB.decrypt=function(str){try{if(!str)return null;var b=CryptoJS.AES.decrypt(str,SECRET_KEY);var t=b.toString(CryptoJS.enc.Utf8);return JSON.parse(t);}catch(e){try{return JSON.parse(str);}catch(e2){return null;}}};
@@ -442,27 +443,7 @@ DB.ud=function(){var u=this.data.currentUserId;if(!u)return null;if(this.isFamil
 DB.aggregateAll=function(){var r={accounts:[],sources:[],categories:[],transactions:[],reminders:[],investments:[]};var self=this;this.data.users.forEach(function(user){if(user.isFamilyView)return;var ud=self.data.data[user.id];if(!ud)return;ud.accounts.forEach(function(a){r.accounts.push(Object.assign({},a,{_userId:user.id,_userName:user.fullName,_userAvatar:user.avatar,_origId:a.id}));});ud.sources.forEach(function(s){r.sources.push(Object.assign({},s,{_userId:user.id,_userName:user.fullName,_userAvatar:user.avatar,_origId:s.id}));});ud.categories.forEach(function(c){r.categories.push(Object.assign({},c,{_userId:user.id,_userName:user.fullName,_userAvatar:user.avatar,_origId:c.id}));});ud.transactions.forEach(function(t){r.transactions.push(Object.assign({},t,{_userId:user.id,_userName:user.fullName,_userAvatar:user.avatar,_origId:t.id}));});ud.reminders.forEach(function(rem){r.reminders.push(Object.assign({},rem,{_userId:user.id,_userName:user.fullName,_userAvatar:user.avatar,_origId:rem.id}));});ud.investments.forEach(function(inv){r.investments.push(Object.assign({},inv,{_userId:user.id,_userName:user.fullName,_userAvatar:user.avatar,_origId:inv.id}));});});return r;};
 DB.nid=function(k){var u=this.data.currentUserId;if(!this.data.meta.nextIds[u])this.data.meta.nextIds[u]={tx:1,rem:1,acc:1,src:1,cat:1,inv:1};return this.data.meta.nextIds[u][k]++;};
 function p2(n){return String(n).padStart(2,'0');}
-
-// ✅ محاسبه دقیق تاریخ شمسی با j2g (اصلاح‌شده)
-var J={
-g2j:function(gy,gm,gd){var dm=[0,31,59,90,120,151,181,212,243,273,304,334];var g2=gm>2?gy+1:gy;var d=355666+365*gy+Math.floor((g2+3)/4)-Math.floor((g2+99)/100)+Math.floor((g2+399)/400)+gd+dm[gm-1];var jy=-1595+33*Math.floor(d/12053);d%=12053;jy+=4*Math.floor(d/1461);d%=1461;if(d>365){jy+=Math.floor((d-1)/365);d=(d-1)%365;}var jm,jd;if(d<186){jm=1+Math.floor(d/31);jd=1+d%31;}else{jm=7+Math.floor((d-186)/30);jd=1+(d-186)%30;}return[jy,jm,jd];},
-j2g:function(jy,jm,jd){jy+=1595;var d=-355668+365*jy+Math.floor(jy/33)*8+Math.floor((jy%33+3)/4)+jd;if(jm<7)d+=(jm-1)*31;else d+=(jm-7)*30+186;var gy=400*Math.floor(d/146097);d%=146097;if(d>36524){d--;gy+=100*Math.floor(d/36524);d%=36524;if(d>=365)d++;}gy+=4*Math.floor(d/1461);d%=1461;if(d>365){gy+=Math.floor((d-1)/365);d=(d-1)%365;}var gd=d+1;var sa=[0,31,(gy%4==0&&gy%100!=0)||gy%400==0?29:28,31,30,31,30,31,31,30,31,30,31];var gm=0;while(gm<13&&gd>sa[gm]){gd-=sa[gm];gm++;}return[gy,gm,gd];},
-today:function(){var t=new Date();return this.g2j(t.getFullYear(),t.getMonth()+1,t.getDate());},
-todayStr:function(){var t=this.today();return t[0]+'/'+p2(t[1])+'/'+p2(t[2]);},
-toJ:function(s){try{if(!s)return'';var a=s.split('-').map(Number);var j=this.g2j(a[0],a[1],a[2]);return j[0]+'/'+p2(j[1])+'/'+p2(j[2]);}catch(e){return s;}},
-toG:function(s){try{var a=s.replace(/-/g,'/').split('/').map(Number);var g=this.j2g(a[0],a[1],a[2]);return g[0]+'-'+p2(g[1])+'-'+p2(g[2]);}catch(e){return s;}},
-mname:function(m){var n=['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];return n[m-1]||'';},
-full:function(){var t=this.today();return t[2]+' '+this.mname(t[1])+' '+t[0];},
-wday:function(){var days=['یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه','شنبه'];return days[new Date().getDay()];},
-fullWithDay:function(){return this.wday()+' • '+this.full();},
-monthR:function(){var t=this.today();var g1=this.j2g(t[0],t[1],1);var nj=t[1]+1,ny=t[0];if(nj>12){nj=1;ny++;}var g2=this.j2g(ny,nj,1);var e=new Date(g2[0],g2[1]-1,g2[2]);e.setDate(e.getDate()-1);return[g1[0]+'-'+p2(g1[1])+'-'+p2(g1[2]),e.getFullYear()+'-'+p2(e.getMonth()+1)+'-'+p2(e.getDate())];},
-monthKey:function(){var t=this.today();return t[0]+'-'+p2(t[1]);},
-// ✅ محاسبه دقیق تعداد روزهای ماه شمسی
-monthDays:function(jy,jm){var g1=this.j2g(jy,jm,1);var nj=jm+1,ny=jy;if(nj>12){nj=1;ny++;}var g2=this.j2g(ny,nj,1);var d1=new Date(g1[0],g1[1]-1,g1[2]);var d2=new Date(g2[0],g2[1]-1,g2[2]);return Math.round((d2-d1)/86400000);},
-// ✅ محاسبه روز هفته اول ماه (0=شنبه، 6=جمعه)
-firstWeekday:function(jy,jm){var g=this.j2g(jy,jm,1);var d=new Date(g[0],g[1]-1,g[2]);return(d.getDay()+1)%7;}
-};
-
+var J={g2j:function(gy,gm,gd){var dm=[0,31,59,90,120,151,181,212,243,273,304,334];var g2=gm>2?gy+1:gy;var d=355666+365*gy+Math.floor((g2+3)/4)-Math.floor((g2+99)/100)+Math.floor((g2+399)/400)+gd+dm[gm-1];var jy=-1595+33*Math.floor(d/12053);d%=12053;jy+=4*Math.floor(d/1461);d%=1461;if(d>365){jy+=Math.floor((d-1)/365);d=(d-1)%365;}var jm,jd;if(d<186){jm=1+Math.floor(d/31);jd=1+d%31;}else{jm=7+Math.floor((d-186)/30);jd=1+(d-186)%30;}return[jy,jm,jd];},j2g:function(jy,jm,jd){jy+=1595;var d=-355668+365*jy+Math.floor(jy/33)*8+Math.floor((jy%33+3)/4)+jd;if(jm<7)d+=(jm-1)*31;else d+=(jm-7)*30+186;var gy=400*Math.floor(d/146097);d%=146097;if(d>36524){d--;gy+=100*Math.floor(d/36524);d%=36524;if(d>=365)d++;}gy+=4*Math.floor(d/1461);d%=1461;if(d>365){gy+=Math.floor((d-1)/365);d=(d-1)%365;}var gd=d+1;var sa=[0,31,(gy%4==0&&gy%100!=0)||gy%400==0?29:28,31,30,31,30,31,31,30,31,30,31];var gm=0;while(gm<13&&gd>sa[gm]){gd-=sa[gm];gm++;}return[gy,gm,gd];},today:function(){var t=new Date();return this.g2j(t.getFullYear(),t.getMonth()+1,t.getDate());},todayStr:function(){var t=this.today();return t[0]+'/'+p2(t[1])+'/'+p2(t[2]);},toJ:function(s){try{if(!s)return'';var a=s.split('-').map(Number);var j=this.g2j(a[0],a[1],a[2]);return j[0]+'/'+p2(j[1])+'/'+p2(j[2]);}catch(e){return s;}},toG:function(s){try{var a=s.replace(/-/g,'/').split('/').map(Number);var g=this.j2g(a[0],a[1],a[2]);return g[0]+'-'+p2(g[1])+'-'+p2(g[2]);}catch(e){return s;}},mname:function(m){var n=['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];return n[m-1]||'';},full:function(){var t=this.today();return t[2]+' '+this.mname(t[1])+' '+t[0];},wday:function(){var days=['یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه','شنبه'];return days[new Date().getDay()];},fullWithDay:function(){return this.wday()+' • '+this.full();},monthR:function(){var t=this.today();var g1=this.j2g(t[0],t[1],1);var nj=t[1]+1,ny=t[0];if(nj>12){nj=1;ny++;}var g2=this.j2g(ny,nj,1);var e=new Date(g2[0],g2[1]-1,g2[2]);e.setDate(e.getDate()-1);return[g1[0]+'-'+p2(g1[1])+'-'+p2(g1[2]),e.getFullYear()+'-'+p2(e.getMonth()+1)+'-'+p2(e.getDate())];},monthKey:function(){var t=this.today();return t[0]+'-'+p2(t[1]);},monthDays:function(jy,jm){var g1=this.j2g(jy,jm,1);var nj=jm+1,ny=jy;if(nj>12){nj=1;ny++;}var g2=this.j2g(ny,nj,1);var d1=new Date(g1[0],g1[1]-1,g1[2]);var d2=new Date(g2[0],g2[1]-1,g2[2]);return Math.round((d2-d1)/86400000);},firstWeekday:function(jy,jm){var g=this.j2g(jy,jm,1);var d=new Date(g[0],g[1]-1,g[2]);return(d.getDay()+1)%7;}};
 function fmt(n){return n?Math.round(n).toLocaleString('en-US'):'0';}
 function fmtUsd(n){if(!n)return'0';if(n<0.01)return n.toFixed(6);if(n<1)return n.toFixed(4);if(n<100)return n.toFixed(2);return Math.round(n).toLocaleString('en-US');}
 function toast(m,t){t=t||'';var e=document.getElementById('toast');e.textContent=m;e.className='on '+t;setTimeout(function(){e.className='';},2800);}
@@ -474,47 +455,17 @@ function renderAvatar(avatar,fallbackName,size){size=size||'small';var cls=size=
 function togglePw(id,btn){var i=document.getElementById(id);if(!i)return;if(i.type==='password'){i.type='text';btn.textContent='🙈';}else{i.type='password';btn.textContent='👁️';}}
 function toggleCard(id){var c=document.getElementById(id);if(c)c.classList.toggle('open');}
 
-// ============ تقویم (کامل و دقیق) ============
+// ============ تقویم ============
 var CalState={targetInput:null,currentJy:0,currentJm:0,currentJd:0};
 function openCalendar(targetInputId){CalState.targetInput=targetInputId;var cur=document.getElementById(targetInputId).value.trim();var t=J.today();try{if(cur){var p=cur.replace(/-/g,'/').split('/').map(Number);if(p.length===3){CalState.currentJy=p[0];CalState.currentJm=p[1];CalState.currentJd=p[2];}else{CalState.currentJy=t[0];CalState.currentJm=t[1];CalState.currentJd=t[2];}}else{CalState.currentJy=t[0];CalState.currentJm=t[1];CalState.currentJd=t[2];}}catch(e){CalState.currentJy=t[0];CalState.currentJm=t[1];CalState.currentJd=t[2];}renderCal();document.getElementById('cal').classList.add('on');}
 function closeCal(){document.getElementById('cal').classList.remove('on');}
-function renderCal(){
-var jy=CalState.currentJy,jm=CalState.currentJm,jd=CalState.currentJd;
-var t=J.today();
-var h='<div class="cal-hdr">';
-h+='<button onclick="calPrevYear()">⏪</button>';
-h+='<button onclick="calPrevMonth()">◀</button>';
-h+='<div class="title">'+J.mname(jm)+' '+jy+'</div>';
-h+='<button onclick="calNextMonth()">▶</button>';
-h+='<button onclick="calNextYear()">⏩</button>';
-h+='</div>';
-h+='<div class="cal-week"><div>ش</div><div>ی</div><div>د</div><div>س</div><div>چ</div><div>پ</div><div class="friday">ج</div></div>';
-h+='<div class="cal-days">';
-// ✅ استفاده از توابع دقیق به جای فرمول‌های تقریبی
-var dim=J.monthDays(jy,jm);
-var jalaliWd=J.firstWeekday(jy,jm);
-for(var i=0;i<jalaliWd;i++)h+='<div class="cal-day empty"></div>';
-for(var d=1;d<=dim;d++){
-var isToday=(jy===t[0]&&jm===t[1]&&d===t[2]);
-var col=(jalaliWd+(d-1))%7;
-var isFri=col===6;
-var cls='cal-day'+(isToday?' today':'')+(isFri?' friday':'');
-h+='<div class="'+cls+'" onclick="calPick('+d+')">'+d+'</div>';
-}
-h+='</div>';
-h+='<div class="cal-footer">';
-h+='<button class="btn b2" style="flex:1" onclick="calToday()">📅 امروز</button>';
-h+='<button class="btn b6" style="flex:1" onclick="closeCal()">انصراف</button>';
-h+='</div>';
-document.getElementById('calBox').innerHTML=h;
-}
+function renderCal(){var jy=CalState.currentJy,jm=CalState.currentJm,jd=CalState.currentJd;var t=J.today();var h='<div class="cal-hdr">';h+='<button onclick="calPrevYear()">⏪</button>';h+='<button onclick="calPrevMonth()">◀</button>';h+='<div class="title">'+J.mname(jm)+' '+jy+'</div>';h+='<button onclick="calNextMonth()">▶</button>';h+='<button onclick="calNextYear()">⏩</button>';h+='</div>';h+='<div class="cal-week"><div>ش</div><div>ی</div><div>د</div><div>س</div><div>چ</div><div>پ</div><div class="friday">ج</div></div>';h+='<div class="cal-days">';var dim=J.monthDays(jy,jm);var jalaliWd=J.firstWeekday(jy,jm);for(var i=0;i<jalaliWd;i++)h+='<div class="cal-day empty"></div>';for(var d=1;d<=dim;d++){var isToday=(jy===t[0]&&jm===t[1]&&d===t[2]);var col=(jalaliWd+(d-1))%7;var isFri=col===6;var cls='cal-day'+(isToday?' today':'')+(isFri?' friday':'');h+='<div class="'+cls+'" onclick="calPick('+d+')">'+d+'</div>';}h+='</div>';h+='<div class="cal-footer">';h+='<button class="btn b2" style="flex:1" onclick="calToday()">📅 امروز</button>';h+='<button class="btn b6" style="flex:1" onclick="closeCal()">انصراف</button>';h+='</div>';document.getElementById('calBox').innerHTML=h;}
 function calPrevYear(){CalState.currentJy--;renderCal();}
 function calNextYear(){CalState.currentJy++;renderCal();}
 function calPrevMonth(){if(CalState.currentJm===1){CalState.currentJm=12;CalState.currentJy--;}else CalState.currentJm--;renderCal();}
 function calNextMonth(){if(CalState.currentJm===12){CalState.currentJm=1;CalState.currentJy++;}else CalState.currentJm++;renderCal();}
 function calToday(){var t=J.today();CalState.currentJy=t[0];CalState.currentJm=t[1];CalState.currentJd=t[2];renderCal();}
 function calPick(d){var val=CalState.currentJy+'/'+p2(CalState.currentJm)+'/'+p2(d);var inp=document.getElementById(CalState.targetInput);if(inp){inp.value=val;}closeCal();if(typeof CalState.onPick==='function'){CalState.onPick(val);CalState.onPick=null;}}
-function openCalFor(inputId,callback){CalState.onPick=callback||null;openCalendar(inputId);}
 function dateInput(id,value,ph){return'<div class="date-inp"><input id="'+id+'" value="'+(value||J.todayStr())+'" placeholder="'+(ph||'تاریخ شمسی')+'" readonly style="cursor:pointer"><button class="cal-btn" type="button" onclick="openCalendar(\''+id+'\')">📅</button></div>';}
 
 // ============ اثر انگشت ============
@@ -525,7 +476,7 @@ function fpRemove(){var me=DB.currentUser();if(!me)return;if(!confirm('حذف؟'
 function fpLogin(){var l=localStorage.getItem('last_login_user');if(!l){toast('اول با رمز وارد شو','wn');return;}var user=DB.data.users.find(function(x){return x.username===l;});if(!user){toast('کاربر نیست','err');return;}if(!FP.hasCred(user.id)){toast('اثر انگشت ثبت نشده','wn');return;}toast('🔄...','info');FP.authenticate(user).then(function(){DB.data.currentUserId=user.id;DB.save();showApp();}).catch(function(e){toast('❌ '+e.message,'err');});}
 function updateFpBtn(){var btn=document.getElementById('fpBtn');if(!btn)return;var l=localStorage.getItem('last_login_user');if(!l){btn.classList.remove('show');return;}var user=DB.data.users.find(function(x){return x.username===l;});if(user&&FP.hasCred(user.id)){btn.classList.add('show');}else{btn.classList.remove('show');}}
 
-// ============ GitHub Sync (با Rate Limit Protection) ============
+// ============ GitHub Sync ============
 var GitHubSync={
 token:localStorage.getItem('gh_token')||'',
 gistId:localStorage.getItem('gh_gist_id')||'',
@@ -536,56 +487,98 @@ rateLimitedUntil:parseInt(localStorage.getItem('gh_rate_limited_until')||'0'),
 isConfigured:function(){return !!(this.token&&this.token.length>20);},
 isRateLimited:function(){return Date.now()<this.rateLimitedUntil;},
 saveToken:function(t,gid){this.token=(t||'').trim();localStorage.setItem('gh_token',this.token);if(gid!==undefined&&gid!==null){this.gistId=(gid||'').trim();if(this.gistId)localStorage.setItem('gh_gist_id',this.gistId);else localStorage.removeItem('gh_gist_id');}},
-req:function(method,url,body){
-var self=this;
-if(this.isRateLimited()){var wait=Math.ceil((this.rateLimitedUntil-Date.now())/1000);return Promise.reject(new Error('Rate limit — '+wait+' ثانیه'));}
-var opts={method:method,headers:{'Authorization':'token '+self.token,'Accept':'application/vnd.github+json'}};
-if(body){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body);}
-return fetch(url,opts).then(function(r){
-if(r.status===403||r.status===429){var reset=r.headers.get('X-RateLimit-Reset');if(reset){var rt=parseInt(reset)*1000;var w=Math.max(60000,rt-Date.now()+5000);self.rateLimitedUntil=Date.now()+w;localStorage.setItem('gh_rate_limited_until',self.rateLimitedUntil.toString());}return r.text().then(function(t){throw new Error('Rate limit خورد — یه ساعت صبر کن');});}
-if(!r.ok)return r.text().then(function(t){throw new Error('GitHub '+r.status+': '+t.slice(0,120));});
-return r.json();
-});
-},
+req:function(method,url,body){var self=this;if(this.isRateLimited()){var wait=Math.ceil((this.rateLimitedUntil-Date.now())/1000);return Promise.reject(new Error('Rate limit — '+wait+' ثانیه'));}var opts={method:method,headers:{'Authorization':'token '+self.token,'Accept':'application/vnd.github+json'}};if(body){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body);}return fetch(url,opts).then(function(r){if(r.status===403||r.status===429){var reset=r.headers.get('X-RateLimit-Reset');if(reset){var rt=parseInt(reset)*1000;var w=Math.max(60000,rt-Date.now()+5000);self.rateLimitedUntil=Date.now()+w;localStorage.setItem('gh_rate_limited_until',self.rateLimitedUntil.toString());}return r.text().then(function(t){throw new Error('Rate limit خورد — یه ساعت صبر کن');});}if(!r.ok)return r.text().then(function(t){throw new Error('GitHub '+r.status+': '+t.slice(0,120));});return r.json();});},
 findExistingGist:function(){var self=this;return this.req('GET','https://api.github.com/gists?per_page=100').then(function(gists){var f=gists.find(function(g){return g.files&&g.files[self.fileName];});if(f){self.gistId=f.id;localStorage.setItem('gh_gist_id',f.id);return f;}return null;});},
 createGist:function(content){var self=this;var body={description:'Naser Family Money Manager',public:false,files:{}};body.files[self.fileName]={content:JSON.stringify(content,null,2)};return this.req('POST','https://api.github.com/gists',body).then(function(d){self.gistId=d.id;localStorage.setItem('gh_gist_id',d.id);return d;});},
 updateGist:function(content){var body={files:{}};body.files[this.fileName]={content:JSON.stringify(content,null,2)};return this.req('PATCH','https://api.github.com/gists/'+this.gistId,body);},
 upload:function(){var self=this;if(!this.isConfigured())return Promise.reject(new Error('توکن تنظیم نشده'));if(this.uploading)return Promise.resolve('already-uploading');if(this.isRateLimited())return Promise.resolve('rate-limited');this.uploading=true;var content={version:2,timestamp:new Date().toISOString(),db:DB.data};var promise;if(!this.gistId){promise=this.findExistingGist().then(function(ex){return ex?self.updateGist(content):self.createGist(content);});}else{promise=this.updateGist(content);}return promise.then(function(r){self.uploading=false;return r;},function(e){self.uploading=false;throw e;});},
 download:function(){var self=this;if(!this.isConfigured())return Promise.reject(new Error('توکن تنظیم نشده'));if(this.isRateLimited())return Promise.reject(new Error('Rate limit'));if(!this.gistId){return this.findExistingGist().then(function(g){if(!g)throw new Error('فایل سینک پیدا نشد');return JSON.parse(g.files[self.fileName].content);});}return this.req('GET','https://api.github.com/gists/'+this.gistId).then(function(g){if(!g.files||!g.files[self.fileName])throw new Error('فایل نیست');return JSON.parse(g.files[self.fileName].content);});},
-debouncedUpload:function(){var self=this;if(!this.isConfigured())return;if(this.isRateLimited())return;if(this.autoSyncTimer)clearTimeout(this.autoSyncTimer);this.autoSyncTimer=setTimeout(function(){self.upload().then(function(){console.log('✅ GitHub sync OK');}).catch(function(e){console.log('❌ GitHub:',e.message);});},20000);},
+debouncedUpload:function(){var self=this;if(!this.isConfigured())return;if(this.isRateLimited())return;if(this.autoSyncTimer)clearTimeout(this.autoSyncTimer);this.autoSyncTimer=setTimeout(function(){self.upload().then(function(){console.log('✅ GitHub sync OK');}).catch(function(e){console.log('❌ GitHub:',e.message);});},8000);},
 autoSync:function(){var self=this;if(!this.isConfigured())return Promise.resolve('not-configured');if(this.isRateLimited())return Promise.resolve('rate-limited');return this.download().then(function(data){if(!data||!data.db)return'invalid';var localSave=parseInt(localStorage.getItem('last_local_save')||'0');var cloudTime=new Date(data.timestamp).getTime();if(cloudTime>localSave+2000){DB.data=data.db;if(!DB.data.currencies)DB.data.currencies=DB.def().currencies;if(!DB.data.sms)DB.data.sms=DB.def().sms;if(!DB.data.meta)DB.data.meta={nextIds:{},lastRollover:{}};DB.initUD();try{localStorage.setItem(DB.key,DB.encrypt(DB.data));localStorage.setItem('last_local_save',Date.now().toString());}catch(e){}return'downloaded';}return'up-to-date';}).catch(function(e){console.log('GitHub autoSync:',e.message);return'error';});}};
-function showGitHubSettings(){
-var h='<h3><span>🐙 سینک GitHub</span><button class="close" onclick="closeM()">×</button></h3>';
-if(GitHubSync.isRateLimited()){var wait=Math.ceil((GitHubSync.rateLimitedUntil-Date.now())/1000);var mins=Math.ceil(wait/60);h+='<div style="padding:12px;background:rgba(244,63,94,.15);border-radius:8px;margin-bottom:12px;font-size:12px;color:var(--er);line-height:1.8">⚠️ <b>Rate Limit فعال</b><br>تا <b>'+mins+' دقیقه</b> دیگه صبر کن.</div>';}
-h+='<div style="font-size:11px;color:var(--st);padding:10px;background:rgba(99,102,241,.1);border-radius:8px;margin-bottom:12px;line-height:1.9">';
-h+='<b style="color:var(--s1)">📝 مراحل:</b><br>';
-h+='۱. اکانت رایگان تو <b>github.com</b> بساز<br>';
-h+='۲. برو <b>Settings → Developer settings → Personal access tokens → Tokens (classic)</b><br>';
-h+='۳. <b>Generate new token (classic)</b><br>';
-h+='۴. فقط <b>gist</b> رو تیک بزن<br>';
-h+='۵. توکن رو پیست کن<br>';
-h+='<b style="color:var(--ok)">✅ تو ایران کار می‌کنه</b>';
-h+='</div>';
-h+='<label>GitHub Personal Token</label>';
-h+='<input id="ghToken" type="password" value="'+(GitHubSync.token||'')+'" placeholder="ghp_xxxxxxxxxxxxxxxxx">';
-h+='<label>Gist ID (خالی بگذار - خودکار ساخته می‌شه)</label>';
-h+='<input id="ghGistId" value="'+(GitHubSync.gistId||'')+'" placeholder="خالی">';
-h+='<button class="btn b3" style="margin-top:8px" onclick="saveGitHubSettings()">💾 ذخیره</button>';
-if(GitHubSync.isConfigured()){
-h+='<div style="margin-top:16px;border-top:1px solid var(--glass-b);padding-top:12px">';
-h+='<button class="btn b1" style="margin-bottom:8px" onclick="ghUploadNow()">⬆️ آپلود به GitHub</button>';
-h+='<button class="btn b2" style="margin-bottom:8px" onclick="ghDownloadNow()">⬇️ دانلود از GitHub</button>';
-h+='<button class="btn b6" style="margin-bottom:8px" onclick="ghClearRateLimit()">🔓 پاک کردن قفل Rate Limit</button>';
-h+='<button class="btn b5" onclick="ghDisconnect()">🚫 قطع اتصال</button>';
-h+='</div>';
-}
-openM(h);
-}
+function showGitHubSettings(){var h='<h3><span>🐙 سینک GitHub</span><button class="close" onclick="closeM()">×</button></h3>';if(GitHubSync.isRateLimited()){var wait=Math.ceil((GitHubSync.rateLimitedUntil-Date.now())/1000);var mins=Math.ceil(wait/60);h+='<div style="padding:12px;background:rgba(244,63,94,.15);border-radius:8px;margin-bottom:12px;font-size:12px;color:var(--er);line-height:1.8">⚠️ <b>Rate Limit فعال</b><br>تا <b>'+mins+' دقیقه</b> دیگه صبر کن.</div>';}h+='<div style="font-size:11px;color:var(--st);padding:10px;background:rgba(99,102,241,.1);border-radius:8px;margin-bottom:12px;line-height:1.9">';h+='<b style="color:var(--s1)">📝 مراحل:</b><br>';h+='۱. اکانت رایگان تو <b>github.com</b> بساز<br>';h+='۲. برو <b>Settings → Developer settings → Personal access tokens → Tokens (classic)</b><br>';h+='۳. <b>Generate new token (classic)</b><br>';h+='۴. فقط <b>gist</b> رو تیک بزن<br>';h+='۵. توکن رو پیست کن<br>';h+='<b style="color:var(--ok)">✅ تو ایران کار می‌کنه</b>';h+='</div>';h+='<label>GitHub Personal Token</label>';h+='<input id="ghToken" type="password" value="'+(GitHubSync.token||'')+'" placeholder="ghp_xxxxxxxxxxxxxxxxx">';h+='<label>Gist ID (خالی بگذار - خودکار ساخته می‌شه)</label>';h+='<input id="ghGistId" value="'+(GitHubSync.gistId||'')+'" placeholder="خالی">';h+='<button class="btn b3" style="margin-top:8px" onclick="saveGitHubSettings()">💾 ذخیره</button>';if(GitHubSync.isConfigured()){h+='<div style="margin-top:16px;border-top:1px solid var(--glass-b);padding-top:12px">';h+='<button class="btn b1" style="margin-bottom:8px" onclick="ghUploadNow()">⬆️ آپلود به GitHub</button>';h+='<button class="btn b2" style="margin-bottom:8px" onclick="ghDownloadNow()">⬇️ دانلود از GitHub</button>';h+='<button class="btn b6" style="margin-bottom:8px" onclick="ghClearRateLimit()">🔓 پاک کردن قفل Rate Limit</button>';h+='<button class="btn b5" onclick="ghDisconnect()">🚫 قطع اتصال</button>';h+='</div>';}openM(h);}
 function saveGitHubSettings(){var tok=document.getElementById('ghToken').value.trim();var gid=document.getElementById('ghGistId').value.trim();if(!tok||tok.length<20){toast('توکن نامعتبر','err');return;}GitHubSync.saveToken(tok,gid||null);GitHubSync.rateLimitedUntil=0;localStorage.removeItem('gh_rate_limited_until');toast('✅ ذخیره شد','info');closeM();showGitHubSettings();}
 function ghUploadNow(){toast('🔄 آپلود...','info');GitHubSync.upload().then(function(r){if(r==='rate-limited')toast('⚠️ Rate Limit فعال','wn');else if(r==='already-uploading')toast('⏳ در حال آپلود','info');else toast('✅ موفق','info');}).catch(function(e){toast('❌ '+e.message,'err');});}
 function ghDownloadNow(){if(!confirm('جایگزین شود؟'))return;toast('🔄 دانلود...','info');GitHubSync.download().then(function(data){if(data&&data.db){try{localStorage.setItem('pre_gh_backup',localStorage.getItem(DB.key));}catch(e){}DB.data=data.db;if(!DB.data.currencies)DB.data.currencies=DB.def().currencies;if(!DB.data.sms)DB.data.sms=DB.def().sms;if(!DB.data.meta)DB.data.meta={nextIds:{},lastRollover:{}};DB.initUD();DB.save();toast('✅ موفق','info');setTimeout(function(){location.reload();},1200);}else{toast('❌ نامعتبر','err');}}).catch(function(e){toast('❌ '+e.message,'err');});}
 function ghDisconnect(){if(!confirm('توکن پاک بشه؟'))return;localStorage.removeItem('gh_token');localStorage.removeItem('gh_gist_id');GitHubSync.token='';GitHubSync.gistId='';toast('🚫 قطع شد');closeM();}
 function ghClearRateLimit(){GitHubSync.rateLimitedUntil=0;localStorage.removeItem('gh_rate_limited_until');toast('✅ قفل پاک شد','info');closeM();}
+
+// ✅ توابع سینک از صفحه لاگین
+function updateSyncStatus(){
+var el=document.getElementById('sync-status');
+if(!el)return;
+el.style.display='block';
+if(GitHubSync.isConfigured()){
+el.innerHTML='<div style="padding:8px;background:rgba(16,185,129,.15);border-radius:8px;font-size:11px;color:var(--ok);text-align:center">🐙 GitHub متصل است</div>';
+}else{
+el.innerHTML='<div style="padding:8px;background:rgba(245,158,11,.15);border-radius:8px;font-size:11px;color:var(--wn);text-align:center">⚠️ GitHub متصل نیست</div>';
+}
+}
+function syncFromCloudLogin(){
+if(!GitHubSync.isConfigured()){
+showGitHubSettingsFromLogin();
+return;
+}
+toast('🔄 در حال دریافت...','info');
+GitHubSync.download().then(function(data){
+if(data&&data.db){
+try{localStorage.setItem('pre_gh_backup',localStorage.getItem(DB.key));}catch(e){}
+DB.data=data.db;
+if(!DB.data.currencies)DB.data.currencies=DB.def().currencies;
+if(!DB.data.sms)DB.data.sms=DB.def().sms;
+if(!DB.data.meta)DB.data.meta={nextIds:{},lastRollover:{}};
+DB.initUD();
+try{localStorage.setItem(DB.key,DB.encrypt(DB.data));localStorage.setItem('last_local_save',Date.now().toString());}catch(e){}
+toast('✅ اطلاعات دریافت شد','info');
+setTimeout(function(){location.reload();},1000);
+}else{toast('❌ فایل پیدا نشد','err');}
+}).catch(function(e){toast('❌ '+e.message,'err');});
+}
+function showGitHubSettingsFromLogin(){
+var h='<h3><span>🐙 اتصال به GitHub</span><button class="close" onclick="closeM()">×</button></h3>';
+h+='<div style="font-size:11px;color:var(--st);padding:10px;background:rgba(99,102,241,.1);border-radius:8px;margin-bottom:12px;line-height:1.8">توکن رو از <b>github.com</b> بساز (فقط scope <b>gist</b>) و اینجا بذار.<br>این کار باعث میشه اطلاعاتت خودکار از ابر بیاد.</div>';
+h+='<label>GitHub Token</label><input id="ghTokenLogin" type="password" value="'+(GitHubSync.token||'')+'" placeholder="ghp_xxxxxxxx">';
+h+='<label>Gist ID (اختیاری)</label><input id="ghGistLogin" value="'+(GitHubSync.gistId||'')+'" placeholder="خالی بگذار">';
+h+='<button class="btn b3" style="margin-top:8px" onclick="saveGitHubLogin()">💾 ذخیره و دریافت</button>';
+openM(h);
+}
+function saveGitHubLogin(){
+var t=document.getElementById('ghTokenLogin').value.trim();
+var g=document.getElementById('ghGistLogin').value.trim();
+if(!t||t.length<20){toast('توکن نامعتبر','err');return;}
+GitHubSync.saveToken(t,g||null);
+GitHubSync.rateLimitedUntil=0;
+localStorage.removeItem('gh_rate_limited_until');
+toast('✅ ذخیره شد','info');
+closeM();
+setTimeout(function(){syncFromCloudLogin();},500);
+}
+function forceSyncNow(){
+if(!GitHubSync.isConfigured()){toast('اول توکن GitHub رو تنظیم کن','wn');return;}
+toast('🔄 در حال دریافت...','info');
+GitHubSync.download().then(function(data){
+if(data&&data.db){
+var cloudTime=new Date(data.timestamp).getTime();
+var localTime=parseInt(localStorage.getItem('last_local_save')||'0');
+if(cloudTime>localTime+2000){
+try{localStorage.setItem('pre_gh_backup',localStorage.getItem(DB.key));}catch(e){}
+DB.data=data.db;
+if(!DB.data.currencies)DB.data.currencies=DB.def().currencies;
+if(!DB.data.sms)DB.data.sms=DB.def().sms;
+if(!DB.data.meta)DB.data.meta={nextIds:{},lastRollover:{}};
+DB.initUD();
+try{localStorage.setItem(DB.key,DB.encrypt(DB.data));localStorage.setItem('last_local_save',Date.now().toString());}catch(e){}
+toast('✅ از ابر دریافت شد، رفرش...','info');
+setTimeout(function(){location.reload();},1200);
+}else{
+toast('✅ نسخه ابر قدیمی‌تره، الان آپلود می‌کنم...','info');
+GitHubSync.upload().then(function(){toast('✅ آپلود شد','info');}).catch(function(e){toast('❌ '+e.message,'err');});
+}
+}else{
+toast('⚠️ فایل سینک تو GitHub نیست، آپلود می‌کنم...','info');
+GitHubSync.upload().then(function(){toast('✅ آپلود شد','info');}).catch(function(e){toast('❌ '+e.message,'err');});
+}
+}).catch(function(e){toast('❌ '+e.message,'err');});
+}
 
 // ============ تغییر رمز، عکس ============
 function showChangePwd(){var h='<h3><span>🔑 تغییر رمز</span><button class="close" onclick="closeM()">×</button></h3>';h+='<label>رمز فعلی</label><div class="pw-wrap"><input class="inp" id="op" type="password"><button class="pw-eye" onclick="togglePw(\'op\',this)">👁️</button></div>';h+='<label>رمز جدید</label><div class="pw-wrap"><input class="inp" id="np" type="password"><button class="pw-eye" onclick="togglePw(\'np\',this)">👁️</button></div>';h+='<label>تکرار</label><div class="pw-wrap"><input class="inp" id="np2" type="password"><button class="pw-eye" onclick="togglePw(\'np2\',this)">👁️</button></div>';h+='<button class="btn b3" style="margin-top:16px" onclick="savePwd()">💾</button>';openM(h);}
@@ -635,13 +628,18 @@ setTimeout(checkAndSendSms,2000);
 setTimeout(checkAndNotify,1500);
 setInterval(function(){refreshPrices();},60000);
 setInterval(function(){checkAndSendSms();checkAndNotify();},300000);
-if(GitHubSync.isConfigured()&&!GitHubSync.isRateLimited()){setTimeout(function(){GitHubSync.autoSync().then(function(r){if(r==='downloaded'){toast('🐙 از GitHub دانلود شد','info');setTimeout(function(){location.reload();},1500);}});},3000);}
+if(GitHubSync.isConfigured()&&!GitHubSync.isRateLimited()){
+setTimeout(function(){GitHubSync.autoSync().then(function(r){if(r==='downloaded'){toast('🐙 از GitHub دانلود شد','info');setTimeout(function(){location.reload();},1500);}});},3000);
+// ✅ چک هر ۲ دقیقه
+setInterval(function(){
+if(!GitHubSync.isRateLimited()){
+GitHubSync.autoSync().then(function(r){if(r==='downloaded'){toast('🐙 بروزرسانی شد','info');setTimeout(function(){location.reload();},1200);}});
+}
+},120000);
+}
 }
 function doLogout(){if(!confirm('خارج می‌شوی؟'))return;DB.data.currentUserId=null;DB.save();location.reload();}
-
-// ✅ checkRollover اصلاح‌شده (بدون تراکنش اضافی)
 function checkRollover(){if(DB.isFamilyView())return;var uid=DB.data.currentUserId;if(!uid)return;var mk=J.monthKey();if(DB.data.meta.lastRollover[uid]===mk)return;DB.data.meta.lastRollover[uid]=mk;DB.save();}
-
 function go(n,el){document.querySelectorAll('.pg').forEach(function(p){p.classList.remove('on');});document.getElementById('pg-'+n).classList.add('on');document.querySelectorAll('.nav div').forEach(function(x){x.classList.remove('on');});el.classList.add('on');if(n==='dash')rDash();if(n==='tx')rTx();if(n==='inv')rInv();if(n==='rep')initReport();if(n==='rem')rRem();if(n==='set')rSet();}
 function rDash(){document.getElementById('td').textContent='🗓️ '+J.fullWithDay();var ud=DB.ud();if(!ud)return;var r=J.monthR();var mt=ud.transactions.filter(function(t){return t.date>=r[0]&&t.date<=r[1]&&t.type!=='rollover';});var inc=mt.filter(function(t){return t.type==='income';}).reduce(function(s,t){return s+t.amount;},0);var exp=mt.filter(function(t){return t.type==='expense';}).reduce(function(s,t){return s+t.amount;},0);document.getElementById('di').textContent=fmt(inc);document.getElementById('de').textContent=fmt(exp);var da=document.getElementById('da');if(!ud.accounts.length){da.innerHTML='<div class="empty">حسابی نداری</div>';}else{da.innerHTML=ud.accounts.map(function(a){var b=accBalance(ud,a.id,a._userId);var badge=a._userName?'<span class="user-badge">'+renderAvatar(a._userAvatar,a._userName,'mini')+' '+a._userName+'</span>':'';return'<div class="row"><div><div>'+badge+'🏦 '+a.name+'</div><small>'+(a.type||'card')+' • '+a.currency+'</small></div><b class="'+(b>=0?'inc':'exp')+'">'+fmt(b)+'</b></div>';}).join('');}drawChart7(ud);rInvestDash(ud);rUsd();rFamily();}
 function accBalance(ud,id,userId){var a=ud.accounts.find(function(x){return x.id===id&&(userId===undefined||x._userId===userId);});if(!a)return 0;var b=a.initial;ud.transactions.forEach(function(t){if(t.accountId!==id)return;if(userId!==undefined&&t._userId!==userId)return;if(t.type==='income'||t.type==='rollover')b+=t.amount;else if(t.type==='expense')b-=t.amount;});return b;}
@@ -649,7 +647,7 @@ function drawChart7(ud){var canvas=document.getElementById('chart7');if(!canvas)
 
 // ============ قیمت‌های آنلاین ============
 var API_CRYPTO='https://api.coingecko.com/api/v3';
-var POPULAR_CRYPTO=[{id:'bitcoin',sym:'BTC',name:'بیت‌کوین',ico:'₿'},{id:'ethereum',sym:'ETH',name:'اتریوم',ico:'Ξ'},{id:'tether',sym:'USDT',name:'تتر',ico:'₮'},{id:'binancecoin',sym:'BNB',name:'بایننس',ico:'B'},{id:'solana',sym:'SOL',name:'سولانا',ico:'S'},{id:'ripple',sym:'XRP',name:'ریپل',ico:'X'},{id:'usd-coin',sym:'USDC',name:'یو‌اس‌دی',ico:'$'},{id:'cardano',sym:'ADA',name:'کاردانو',ico:'A'},{id:'dogecoin',sym:'DOGE',name:'دوج',ico:'Ð'},{id:'tron',sym:'TRX',name:'ترون',ico:'T'},{id:'litecoin',sym:'LTC',name:'لایت‌کوین',ico:'Ł'},{id:'shiba-inu',sym:'SHIB',name:'شیبا',ico:'S'},{id:'pepe',sym:'PEPE',name:'پپه',ico:'🐸'},{id:'the-open-network',sym:'TON',name:'تون',ico:'💎'},{id:'sui',sym:'SUI',name:'سویی',ico:'S'},{id:'arbitrum',sym:'ARB',name:'آربیتروم',ico:'A'},{id:'optimism',sym:'OP',name:'اپتیمیزم',ico:'O'},{id:'aave',sym:'AAVE',name:'آوی',ico:'A'}];
+var POPULAR_CRYPTO=[{id:'bitcoin',sym:'BTC',name:'بیت‌کوین',ico:'₿'},{id:'ethereum',sym:'ETH',name:'اتریوم',ico:'Ξ'},{id:'tether',sym:'USDT',name:'تتر',ico:'₮'},{id:'binancecoin',sym:'BNB',name:'بایننس',ico:'B'},{id:'solana',sym:'SOL',name:'سولانا',ico:'S'},{id:'ripple',sym:'XRP',name:'ریپل',ico:'X'},{id:'usd-coin',sym:'USDC',name:'یو‌اس‌دی',ico:'$'},{id:'cardano',sym:'ADA',name:'کاردانو',ico:'A'},{id:'dogecoin',sym:'DOGE',name:'دوج',ico:'Ð'},{id:'tron',sym:'TRX',name:'ترون',ico:'T'},{id:'litecoin',sym:'LTC',name:'لایت‌کوین',ico:'Ł'},{id:'shiba-inu',sym:'SHIB',name:'شیبا',ico:'S'},{id:'pepe',sym:'PEPE',name:'پپه',ico:'🐸'},{id:'the-open-network',sym:'TON',name:'تون',ico:'💎'},{id:'sui',sym:'SUI',name:'سویی',ico:'S'},{id:'arbitrum',sym:'ARB',name:'آربیتروم',ico:'A'},{id:'aave',sym:'AAVE',name:'آوی',ico:'A'}];
 function sanitizeUSDTPrice(p){if(!p||isNaN(p))return 0;if(p>=50000&&p<=600000)return Math.round(p);if(p>=500000&&p<=6000000)return Math.round(p/10);return 0;}
 function fetchUSDTPrice(){var sources=[{name:'نوبیتکس',url:'https://api.nobitex.ir/v2/orderbook/USDTIRT',extract:function(d){return sanitizeUSDTPrice(parseFloat(d.lastTradePrice||d.lastPrice||0));}},{name:'بیت‌پین',url:'https://api.bitpin.ir/v4/mth/matches/USDT_IRT/',extract:function(d){if(!Array.isArray(d)||!d.length)throw 0;return sanitizeUSDTPrice(parseFloat(d[0].price||0));}},{name:'والکس',url:'https://api.wallex.ir/v1/markets',extract:function(d){var u=d.result&&d.result.symbols&&d.result.symbols.USDTTM;if(!u)throw 0;return sanitizeUSDTPrice(parseFloat((u.stats&&u.stats.lastPrice)||0));}}];return new Promise(function(resolve,reject){var idx=0;function tryNext(){if(idx>=sources.length){reject(new Error('ناموفق'));return;}var s=sources[idx++];fetch(s.url).then(function(r){return r.json();}).then(function(d){try{var p=s.extract(d);if(p>0){resolve({price:p,source:s.name});}else{tryNext();}}catch(err){tryNext();}}).catch(function(e){tryNext();});}tryNext();});}
 function searchStock(q){return new Promise(function(resolve){var url='https://cdn.tsetmc.com/api/Instrument/GetInstrumentSearch/'+encodeURIComponent(q);fetch(url).then(function(r){return r.json();}).then(function(data){if(!data.instrumentSearch||!data.instrumentSearch.length){resolve([]);return;}resolve(data.instrumentSearch.map(function(x){return{insCode:String(x.insCode),symbol:x.lVal18AFC||'—',name:x.lVal30||'—',market:x.flowTitle||'بورس'};}));}).catch(function(e){resolve([]);});});}
@@ -719,7 +717,7 @@ function payRem(id){var ud=DB.ud();var r=ud.reminders.find(function(x){return x.
 function delRem(id){if(!confirm('حذف؟'))return;var ud=DB.ud();ud.reminders=ud.reminders.filter(function(r){return r.id!==id;});DB.save();rRem();}
 
 // ============ تنظیمات ============
-function rSet(){var ud=DB.ud();if(!ud)return;var me=DB.data.users.find(function(x){return x.id===DB.data.currentUserId;});var isFam=me&&me.isFamilyView;var usersForList=isFam?DB.data.users:DB.data.users.filter(function(u){return u.id===DB.data.currentUserId;});document.getElementById('usersl').innerHTML=usersForList.map(function(u){var isMe=u.id===DB.data.currentUserId;var h='<div class="row"><div style="display:flex;align-items:center;gap:10px;flex:1">'+renderAvatar(u.avatar,u.fullName,'small')+'<div>👤 '+u.fullName+(u.isFamilyView?' <span class="family-badge" style="margin:0;font-size:9px">FAMILY</span>':'')+'<small>@'+u.username+' • '+u.role+(isMe?' (شما)':'')+'</small></div></div>';h+='<button class="btn b5" style="max-width:44px;padding:5px 8px;font-size:11px;margin:0" onclick="editUser('+u.id+')">✏️</button>';if(isFam&&!isMe&&!u.isFamilyView)h+='<button class="btn b4" style="max-width:44px;padding:5px 8px;font-size:11px;margin:0" onclick="delUser('+u.id+')">🗑️</button>';h+='</div>';return h;}).join('');document.getElementById('curlist').innerHTML=DB.data.currencies.map(function(c){var h='<div class="row"><div style="flex:1">'+c.symbol+' '+c.name+' <small>'+c.code+'</small></div></div>';return h;}).join('');var srcHtml='';ud.sources.forEach(function(s){var d=s._userId?'':'<button class="btn b5" style="max-width:44px;padding:5px 8px;font-size:11px;margin:0" onclick="editSrc('+s.id+')">✏️</button>';srcHtml+='<div class="row"><div style="flex:1">📥 '+s.name+'</div>'+d+'</div>';});document.getElementById('scl').innerHTML=srcHtml||'<div class="empty">خالی</div>';var catHtml='';ud.categories.forEach(function(c){var d=c._userId?'':'<button class="btn b5" style="max-width:44px;padding:5px 8px;font-size:11px;margin:0" onclick="editCat('+c.id+')">✏️</button>';catHtml+='<div class="row"><div style="flex:1">📤 '+c.name+'</div>'+d+'</div>';});document.getElementById('ccl').innerHTML=catHtml||'<div class="empty">خالی</div>';document.getElementById('smsApiKey').value=DB.data.sms.apiKey||'';document.getElementById('smsSender').value=DB.data.sms.sender||'02000660110';}
+function rSet(){var ud=DB.ud();if(!ud)return;var me=DB.data.users.find(function(x){return x.id===DB.data.currentUserId;});var isFam=me&&me.isFamilyView;var usersForList=isFam?DB.data.users:DB.data.users.filter(function(u){return u.id===DB.data.currentUserId;});document.getElementById('usersl').innerHTML=usersForList.map(function(u){var isMe=u.id===DB.data.currentUserId;var h='<div class="row"><div style="display:flex;align-items:center;gap:10px;flex:1">'+renderAvatar(u.avatar,u.fullName,'small')+'<div>👤 '+u.fullName+(u.isFamilyView?' <span class="family-badge" style="margin:0;font-size:9px">FAMILY</span>':'')+'<small>@'+u.username+' • '+u.role+(isMe?' (شما)':'')+'</small></div></div>';h+='<button class="btn b5" style="max-width:44px;padding:5px 8px;font-size:11px;margin:0" onclick="editUser('+u.id+')">✏️</button>';if(isFam&&!isMe&&!u.isFamilyView)h+='<button class="btn b4" style="max-width:44px;padding:5px 8px;font-size:11px;margin:0" onclick="delUser('+u.id+')">🗑️</button>';h+='</div>';return h;}).join('');document.getElementById('curlist').innerHTML=DB.data.currencies.map(function(c){return'<div class="row"><div style="flex:1">'+c.symbol+' '+c.name+' <small>'+c.code+'</small></div></div>';}).join('');var srcHtml='';ud.sources.forEach(function(s){var d=s._userId?'':'<button class="btn b5" style="max-width:44px;padding:5px 8px;font-size:11px;margin:0" onclick="editSrc('+s.id+')">✏️</button>';srcHtml+='<div class="row"><div style="flex:1">📥 '+s.name+'</div>'+d+'</div>';});document.getElementById('scl').innerHTML=srcHtml||'<div class="empty">خالی</div>';var catHtml='';ud.categories.forEach(function(c){var d=c._userId?'':'<button class="btn b5" style="max-width:44px;padding:5px 8px;font-size:11px;margin:0" onclick="editCat('+c.id+')">✏️</button>';catHtml+='<div class="row"><div style="flex:1">📤 '+c.name+'</div>'+d+'</div>';});document.getElementById('ccl').innerHTML=catHtml||'<div class="empty">خالی</div>';document.getElementById('smsApiKey').value=DB.data.sms.apiKey||'';document.getElementById('smsSender').value=DB.data.sms.sender||'02000660110';}
 function showCurrencyForm(){var h='<h3><span>➕ ارز</span><button class="close" onclick="closeM()">×</button></h3><label>کد</label><input id="ccode" maxlength="6"><label>نام</label><input id="cname"><label>نماد</label><input id="csym" maxlength="4"><label>نرخ</label><input id="crate" type="number"><button class="btn b3" style="margin-top:16px" onclick="saveCur()">💾</button>';openM(h);}
 function saveCur(){var code=document.getElementById('ccode').value.trim().toUpperCase();var name=document.getElementById('cname').value.trim();var sym=document.getElementById('csym').value.trim()||code;var rate=parseFloat(document.getElementById('crate').value)||0;if(!code||!name){toast('کد و نام','err');return;}DB.data.currencies.push({code:code,name:name,symbol:sym,rate:rate,base:false,live:false});DB.save();closeM();toast('✅');rSet();}
 function showSrcForm(){if(DB.isFamilyView()){toast('در نمای خانواده نمی‌تونی','wn');return;}var h='<h3><span>➕ منبع</span><button class="close" onclick="closeM()">×</button></h3><label>نام</label><input id="sn"><button class="btn b3" style="margin-top:16px" onclick="saveSrc()">💾</button>';openM(h);}
@@ -738,32 +736,7 @@ function sendSMS(receptor,message){var s=DB.data.sms;if(!s||!s.apiKey){return Pr
 function saveSmsSettings(){DB.data.sms.apiKey=document.getElementById('smsApiKey').value.trim();DB.data.sms.sender=document.getElementById('smsSender').value.trim()||'02000660110';DB.data.sms.receiver='09158861929';DB.save();toast('✅');}
 function testSms(){sendSMS('09158861929','تست').then(function(){toast('✅','info');}).catch(function(e){toast('❌ '+e.message,'err');});}
 function testTwoReminders(){var s=DB.data.sms;if(!s||!s.apiKey){toast('API Key','err');return;}sendSMS('09158861929','📅 تست ۷ روز').then(function(){toast('✅','info');setTimeout(function(){sendSMS('09158861929','🔔 تست ۱ روز');},2000);}).catch(function(e){toast('❌ '+e.message,'err');});}
-function checkAndSendSms(){
-var all=DB.data.users.filter(function(u){return !u.isFamilyView;});
-all.forEach(function(user){
-var ud=DB.data.data[user.id];if(!ud)return;
-var s=DB.data.sms;if(!s||!s.apiKey)return;
-var now=new Date();
-var wk=new Date(now);wk.setDate(wk.getDate()+7);
-var wj=J.g2j(wk.getFullYear(),wk.getMonth()+1,wk.getDate());
-var wks=wj[0]+'/'+p2(wj[1])+'/'+p2(wj[2]);
-var tm=new Date(now);tm.setDate(tm.getDate()+1);
-var tj=J.g2j(tm.getFullYear(),tm.getMonth()+1,tm.getDate());
-var tms=tj[0]+'/'+p2(tj[1])+'/'+p2(tj[2]);
-ud.reminders.forEach(function(r){
-if(r.isPaid)return;if(r.type!=='installment'&&r.type!=='check')return;
-var tn=r.type==='installment'?'قسط':'چک';
-if(r.dueJalali===wks&&!r.smsWeekSent){
-var m=r.smsText||('📅 یادآور '+tn+' — ۷ روز\n👤 '+user.fullName+'\n🔹 '+r.title+'\n💰 '+fmt(r.amount)+' تومان\n📆 '+r.dueJalali);
-sendSMS('09158861929',m).then(function(){r.smsWeekSent=true;DB.save();}).catch(function(e){});
-}
-if(r.dueJalali===tms&&!r.smsDaySent){
-var m2=r.smsText?('⚠️ '+r.smsText+'\n(یادآور فردا — '+user.fullName+')'):('🔔 یادآور فوری '+tn+' — فردا!\n👤 '+user.fullName+'\n🔹 '+r.title+'\n💰 '+fmt(r.amount)+' تومان\n📆 '+r.dueJalali);
-sendSMS('09158861929',m2).then(function(){r.smsDaySent=true;DB.save();}).catch(function(e){});
-}
-});
-});
-}
+function checkAndSendSms(){var all=DB.data.users.filter(function(u){return !u.isFamilyView;});all.forEach(function(user){var ud=DB.data.data[user.id];if(!ud)return;var s=DB.data.sms;if(!s||!s.apiKey)return;var now=new Date();var wk=new Date(now);wk.setDate(wk.getDate()+7);var wj=J.g2j(wk.getFullYear(),wk.getMonth()+1,wk.getDate());var wks=wj[0]+'/'+p2(wj[1])+'/'+p2(wj[2]);var tm=new Date(now);tm.setDate(tm.getDate()+1);var tj=J.g2j(tm.getFullYear(),tm.getMonth()+1,tm.getDate());var tms=tj[0]+'/'+p2(tj[1])+'/'+p2(tj[2]);ud.reminders.forEach(function(r){if(r.isPaid)return;if(r.type!=='installment'&&r.type!=='check')return;var tn=r.type==='installment'?'قسط':'چک';if(r.dueJalali===wks&&!r.smsWeekSent){var m=r.smsText||('📅 یادآور '+tn+' — ۷ روز\n👤 '+user.fullName+'\n🔹 '+r.title+'\n💰 '+fmt(r.amount)+' تومان\n📆 '+r.dueJalali);sendSMS('09158861929',m).then(function(){r.smsWeekSent=true;DB.save();}).catch(function(e){});}if(r.dueJalali===tms&&!r.smsDaySent){var m2=r.smsText?('⚠️ '+r.smsText+'\n(یادآور فردا — '+user.fullName+')'):('🔔 یادآور فوری '+tn+' — فردا!\n👤 '+user.fullName+'\n🔹 '+r.title+'\n💰 '+fmt(r.amount)+' تومان\n📆 '+r.dueJalali);sendSMS('09158861929',m2).then(function(){r.smsDaySent=true;DB.save();}).catch(function(e){});}});});}
 function requestNotifPermission(){if(!('Notification' in window)){toast('پشتیبانی نمی‌شود','err');return;}Notification.requestPermission().then(function(p){if(p==='granted'){toast('✅','info');}else{toast('❌','err');}});}
 function sendNotif(title,body){if('Notification' in window&&Notification.permission==='granted'){new Notification(title,{body});}}
 function checkAndNotify(){var ud=DB.ud();if(!ud)return;ud.reminders.forEach(function(r){if(r.isPaid)return;var p=r.dueJalali.split('/').map(Number);var g=J.j2g(p[0],p[1],p[2]);var dd=new Date(g[0],g[1]-1,g[2]);var td=new Date();td.setHours(0,0,0,0);var days=Math.round((dd-td)/86400000);if(days===0)sendNotif('🔔 امروز',r.title);else if(days===1)sendNotif('🔔 فردا',r.title);});}
@@ -772,7 +745,7 @@ function checkAndNotify(){var ud=DB.ud();if(!ud)return;ud.reminders.forEach(func
 function expData(){var b=new Blob([JSON.stringify(DB.data,null,2)],{type:'application/json'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='naser_family_'+J.todayStr().replace(/\//g,'-')+'.json';a.click();toast('✅ دانلود');}
 function impData(){var inp=document.createElement('input');inp.type='file';inp.accept='.json,.txt,.bak';inp.onchange=function(e){var f=e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(ev){try{var txt=ev.target.result;var d=null;try{var parsed=JSON.parse(txt);if(parsed&&parsed.users&&parsed.data){d=parsed;}else if(parsed&&parsed.db&&parsed.db.users){d=parsed.db;}else throw new Error('نامعتبر');}catch(e1){try{var dec=DB.decrypt(txt);if(dec&&dec.users&&dec.data)d=dec;else throw new Error('ناموفق');}catch(e2){throw new Error('فایل نامعتبر');}}if(!d){toast('نامعتبر','err');return;}if(!confirm('جایگزین شود؟'))return;var def=DB.def();if(!d.currencies)d.currencies=def.currencies;if(!d.sms)d.sms=def.sms;if(!d.meta)d.meta={nextIds:{},lastRollover:{}};if(!d.prices)d.prices={usd:0,lastUpdate:null,source:'—'};if(!d.users||!d.users.length)d.users=def.users;DB.data=d;DB.initUD();DB.save();toast('✅ بارگذاری شد','info');setTimeout(function(){location.reload();},900);}catch(err){console.error('Import error:',err);toast('❌ '+err.message,'err');}};r.readAsText(f);};inp.click();}
 function clrData(){if(!confirm('همه پاک شود؟'))return;if(!confirm('آخرین هشدار!'))return;localStorage.removeItem(DB.key);location.reload();}
-function showSync(){var h='<h3><span>☁️ بکاپ</span><button class="close" onclick="closeM()">×</button></h3><button class="btn b3" style="margin-bottom:8px" onclick="expData();closeM()">📥 دانلود JSON</button><button class="btn b5" style="margin-bottom:8px" onclick="impData();closeM()">⬆️ بارگذاری</button><button class="btn b4" onclick="doLogout()">🚪 خروج</button>';openM(h);}
+function showSync(){var h='<h3><span>☁️ بکاپ</span><button class="close" onclick="closeM()">×</button></h3><button class="btn b3" style="margin-bottom:8px" onclick="expData();closeM()">📥 دانلود JSON</button><button class="btn b5" style="margin-bottom:8px" onclick="impData();closeM()">⬆️ بارگذاری</button><button class="btn b1" style="margin-bottom:8px" onclick="forceSyncNow()">🔄 سینک فوری GitHub</button><button class="btn b4" onclick="doLogout()">🚪 خروج</button>';openM(h);}
 function autoBackup(){try{var s=localStorage.getItem(DB.key);if(!s)return;var b=JSON.parse(localStorage.getItem('naser_backups')||'[]');var today=new Date().toISOString().slice(0,10);var has=b.some(function(x){return x.date===today;});if(!has){b.unshift({date:today,data:s});b=b.slice(0,5);localStorage.setItem('naser_backups',JSON.stringify(b));}}catch(e){}}
 function restoreBackup(index){try{var b=JSON.parse(localStorage.getItem('naser_backups')||'[]');if(!b[index]){toast('پیدا نشد','err');return;}if(!confirm('از '+b[index].date+' بازیابی شود؟'))return;localStorage.setItem(DB.key,b[index].data);location.reload();}catch(e){toast('خطا','err');}}
 function showBackups(){try{var b=JSON.parse(localStorage.getItem('naser_backups')||'[]');var h='<h3><span>📚 بکاپ‌ها</span><button class="close" onclick="closeM()">×</button></h3>';if(!b.length){h+='<div class="empty">هنوز بکاپی نیست</div>';}else{h+='<div style="font-size:11px;color:var(--st);margin-bottom:10px">آخرین ۵ بکاپ</div>';b.forEach(function(x,i){h+='<div class="row"><span>📅 '+x.date+'</span><button class="btn b3" style="max-width:100px;padding:5px 10px;font-size:11px;margin:0" onclick="restoreBackup('+i+')">🔄 بازیابی</button></div>';});}openM(h);}catch(e){toast('خطا','err');}}
@@ -805,8 +778,44 @@ try{DB.load();}catch(e){DB.data=DB.def();DB.initUD();}
 var ldel=document.getElementById('ld');if(ldel)ldel.textContent='🗓️ '+J.full();
 var lpe=document.getElementById('lp');if(lpe)lpe.addEventListener('keypress',function(e){if(e.key==='Enter')doLogin();});
 updateFpBtn();
+if(GitHubSync.isConfigured()&&!GitHubSync.isRateLimited()){
+try{
+GitHubSync.autoSync().then(function(r){
+if(r==='downloaded'){
+if(typeof toast==='function')toast('🐙 اطلاعات از GitHub دانلود شد','info');
+setTimeout(function(){location.reload();},1200);
+}else{
 if(DB.data&&DB.data.currentUserId){showApp();}
+else{updateSyncStatus();}
+}
+}).catch(function(e){
+console.log('Sync on load:',e.message);
+if(DB.data&&DB.data.currentUserId){showApp();}
+else{updateSyncStatus();}
+});
+}catch(e){
+if(DB.data&&DB.data.currentUserId){showApp();}
+else{updateSyncStatus();}
+}
+}else{
+if(DB.data&&DB.data.currentUserId){showApp();}
+else{updateSyncStatus();}
+}
 window.addEventListener('resize',function(){if(DB.data&&DB.data.currentUserId)rDash();});
+document.addEventListener('visibilitychange',function(){
+if(document.visibilityState==='visible'&&DB.data&&DB.data.currentUserId&&GitHubSync.isConfigured()&&!GitHubSync.isRateLimited()){
+GitHubSync.autoSync().then(function(r){
+if(r==='downloaded'){toast('🐙 بروزرسانی شد','info');setTimeout(function(){location.reload();},1000);}
+});
+}
+});
+setInterval(function(){
+if(DB.data&&DB.data.currentUserId&&GitHubSync.isConfigured()&&!GitHubSync.isRateLimited()){
+GitHubSync.autoSync().then(function(r){
+if(r==='downloaded'){toast('🐙 بروزرسانی شد','info');setTimeout(function(){location.reload();},1000);}
+});
+}
+},120000);
 setTimeout(function(){try{refreshAll();}catch(e){}},300);
 });
 </script>
