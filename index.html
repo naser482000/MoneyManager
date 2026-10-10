@@ -494,6 +494,29 @@ function getInitial(name){if(!name)return'?';var p=name.trim().split(/\s+/);if(p
 function renderAvatar(avatar,fallbackName,size){size=size||'small';var cls=size==='large'?'avatar-circle':(size==='mini'?'mini-avatar':'avatar-small');if(avatar){return'<div class="'+cls+'"><img src="'+esc(avatar)+'" alt=""></div>';}return'<div class="'+cls+'">'+getInitial(fallbackName)+'</div>';}
 function togglePw(id,btn){var i=document.getElementById(id);if(!i)return;if(i.type==='password'){i.type='text';btn.textContent='🙈';}else{i.type='password';btn.textContent='👁️';}}
 function toggleCard(id){var c=document.getElementById(id);if(c)c.classList.toggle('open');}
+
+// ============ تشخیص مشغول بودن کاربر و ری‌استارت ایمن ============
+function isUserBusy(){
+  var md=document.getElementById('md');
+  if(md&&md.classList.contains('on'))return true;
+  var cal=document.getElementById('cal');
+  if(cal&&cal.classList.contains('on'))return true;
+  var ae=document.activeElement;
+  if(ae){
+    var tn=ae.tagName;
+    if(tn==='INPUT'||tn==='TEXTAREA'||tn==='SELECT')return true;
+    if(ae.isContentEditable)return true;
+  }
+  return false;
+}
+var _syncReloadTries=0;
+function safeSyncReload(){
+  if(_syncReloadTries>20){_syncReloadTries=0;location.reload();return;}
+  if(isUserBusy()){_syncReloadTries++;setTimeout(safeSyncReload,3000);return;}
+  _syncReloadTries=0;
+  location.reload();
+}
+
 function userPickerHtml(selectedUid,onchangeFn){if(!DB.isFamilyView())return '';var opts=DB.data.users.filter(function(u){return !u.isFamilyView;}).map(function(u){return '<option value="'+u.id+'"'+(u.id===selectedUid?' selected':'')+'>'+esc(u.fullName)+'</option>';}).join('');return '<label style="color:var(--s1);font-weight:800">👤 ثبت برای کاربر</label><select id="targetUser"'+(onchangeFn?' onchange="'+onchangeFn+'"':'')+'>'+opts+'</select>';}
 function readTargetUser(){if(!DB.isFamilyView())return DB.data.currentUserId;var sel=document.getElementById('targetUser');if(!sel)return null;return parseInt(sel.value);}
 
@@ -519,7 +542,7 @@ function fpLogin(){var l=localStorage.getItem('last_login_user');if(!l){toast('�
 function updateFpBtn(){var btn=document.getElementById('fpBtn');if(!btn)return;var l=localStorage.getItem('last_login_user');if(!l){btn.classList.remove('show');return;}var user=DB.data.users.find(function(x){return x.username===l;});if(user&&FP.hasCred(user.id)){btn.classList.add('show');}else{btn.classList.remove('show');}}
 
 // ============ GitHub Sync ============
-var GitHubSync={token:localStorage.getItem('gh_token')||'',gistId:localStorage.getItem('gh_gist_id')||'',fileName:'naser_family_data.json',autoSyncTimer:null,uploading:false,rateLimitedUntil:parseInt(localStorage.getItem('gh_rate_limited_until')||'0'),isConfigured:function(){return !!(this.token&&this.token.length>20);},isRateLimited:function(){return Date.now()<this.rateLimitedUntil;},saveToken:function(t,gid){this.token=(t||'').trim();localStorage.setItem('gh_token',this.token);if(gid!==undefined&&gid!==null){this.gistId=(gid||'').trim();if(this.gistId)localStorage.setItem('gh_gist_id',this.gistId);else localStorage.removeItem('gh_gist_id');}},req:function(method,url,body){var self=this;if(this.isRateLimited()){var wait=Math.ceil((this.rateLimitedUntil-Date.now())/1000);return Promise.reject(new Error('Rate limit — '+wait+' ثانیه'));}var opts={method:method,headers:{'Authorization':'token '+self.token,'Accept':'application/vnd.github+json'}};if(body){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body);}return fetch(url,opts).then(function(r){if(r.status===403||r.status===429){var reset=r.headers.get('X-RateLimit-Reset');if(reset){var rt=parseInt(reset)*1000;var w=Math.max(60000,rt-Date.now()+5000);self.rateLimitedUntil=Date.now()+w;localStorage.setItem('gh_rate_limited_until',self.rateLimitedUntil.toString());}return r.text().then(function(t){throw new Error('Rate limit خورد');});}if(!r.ok)return r.text().then(function(t){throw new Error('GitHub '+r.status+': '+t.slice(0,120));});return r.json();});},findExistingGist:function(){var self=this;return this.req('GET','https://api.github.com/gists?per_page=100').then(function(gists){var f=gists.find(function(g){return g.files&&g.files[self.fileName];});if(f){self.gistId=f.id;localStorage.setItem('gh_gist_id',f.id);return f;}return null;});},createGist:function(content){var self=this;var body={description:'Naser Family Money Manager',public:false,files:{}};body.files[self.fileName]={content:JSON.stringify(content,null,2)};return this.req('POST','https://api.github.com/gists',body).then(function(d){self.gistId=d.id;localStorage.setItem('gh_gist_id',d.id);return d;});},updateGist:function(content){var body={files:{}};body.files[this.fileName]={content:JSON.stringify(content,null,2)};return this.req('PATCH','https://api.github.com/gists/'+this.gistId,body);},upload:function(){var self=this;if(!this.isConfigured())return Promise.reject(new Error('توکن تنظیم نشده'));if(this.uploading)return Promise.resolve('already-uploading');if(this.isRateLimited())return Promise.resolve('rate-limited');this.uploading=true;var content={version:2,timestamp:new Date().toISOString(),db:DB.data};var promise;if(!this.gistId){promise=this.findExistingGist().then(function(ex){return ex?self.updateGist(content):self.createGist(content);});}else{promise=this.updateGist(content);}return promise.then(function(r){self.uploading=false;return r;},function(e){self.uploading=false;throw e;});},download:function(){var self=this;if(!this.isConfigured())return Promise.reject(new Error('توکن تنظیم نشده'));if(this.isRateLimited())return Promise.reject(new Error('Rate limit'));if(!this.gistId){return this.findExistingGist().then(function(g){if(!g)throw new Error('فایل سینک پیدا نشد');return JSON.parse(g.files[self.fileName].content);});}return this.req('GET','https://api.github.com/gists/'+this.gistId).then(function(g){if(!g.files||!g.files[self.fileName])throw new Error('فایل نیست');return JSON.parse(g.files[self.fileName].content);});},debouncedUpload:function(){var self=this;if(!this.isConfigured())return;if(this.isRateLimited())return;if(this.autoSyncTimer)clearTimeout(this.autoSyncTimer);this.autoSyncTimer=setTimeout(function(){self.upload().then(function(){console.log('✅ GitHub sync OK');}).catch(function(e){console.log('❌ GitHub:',e.message);});},8000);},autoSync:function(){var self=this;if(!this.isConfigured())return Promise.resolve('not-configured');if(this.isRateLimited())return Promise.resolve('rate-limited');return this.download().then(function(data){if(!data||!data.db)return'invalid';var localSave=parseInt(localStorage.getItem('last_local_save')||'0');var cloudTime=new Date(data.timestamp).getTime();if(cloudTime>localSave+2000){DB.data=data.db;if(!DB.data.currencies)DB.data.currencies=DB.def().currencies;if(!DB.data.sms)DB.data.sms=DB.def().sms;if(!DB.data.meta)DB.data.meta={nextIds:{},lastRollover:{}};DB.initUD();try{localStorage.setItem(DB.key,DB.encrypt(DB.data));localStorage.setItem('last_local_save',Date.now().toString());}catch(e){}return'downloaded';}return'up-to-date';}).catch(function(e){console.log('GitHub autoSync:',e.message);return'error';});}};
+var GitHubSync={token:localStorage.getItem('gh_token')||'',gistId:localStorage.getItem('gh_gist_id')||'',fileName:'naser_family_data.json',autoSyncTimer:null,uploading:false,rateLimitedUntil:parseInt(localStorage.getItem('gh_rate_limited_until')||'0'),isConfigured:function(){return !!(this.token&&this.token.length>20);},isRateLimited:function(){return Date.now()<this.rateLimitedUntil;},saveToken:function(t,gid){this.token=(t||'').trim();localStorage.setItem('gh_token',this.token);if(gid!==undefined&&gid!==null){this.gistId=(gid||'').trim();if(this.gistId)localStorage.setItem('gh_gist_id',this.gistId);else localStorage.removeItem('gh_gist_id');}},req:function(method,url,body){var self=this;if(this.isRateLimited()){var wait=Math.ceil((this.rateLimitedUntil-Date.now())/1000);return Promise.reject(new Error('Rate limit — '+wait+' ثانیه'));}var opts={method:method,headers:{'Authorization':'token '+self.token,'Accept':'application/vnd.github+json'}};if(body){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body);}return fetch(url,opts).then(function(r){if(r.status===403||r.status===429){var reset=r.headers.get('X-RateLimit-Reset');if(reset){var rt=parseInt(reset)*1000;var w=Math.max(60000,rt-Date.now()+5000);self.rateLimitedUntil=Date.now()+w;localStorage.setItem('gh_rate_limited_until',self.rateLimitedUntil.toString());}return r.text().then(function(t){throw new Error('Rate limit خورد');});}if(!r.ok)return r.text().then(function(t){throw new Error('GitHub '+r.status+': '+t.slice(0,120));});return r.json();});},findExistingGist:function(){var self=this;return this.req('GET','https://api.github.com/gists?per_page=100').then(function(gists){var f=gists.find(function(g){return g.files&&g.files[self.fileName];});if(f){self.gistId=f.id;localStorage.setItem('gh_gist_id',f.id);return f;}return null;});},createGist:function(content){var self=this;var body={description:'Naser Family Money Manager',public:false,files:{}};body.files[self.fileName]={content:JSON.stringify(content,null,2)};return this.req('POST','https://api.github.com/gists',body).then(function(d){self.gistId=d.id;localStorage.setItem('gh_gist_id',d.id);return d;});},updateGist:function(content){var body={files:{}};body.files[this.fileName]={content:JSON.stringify(content,null,2)};return this.req('PATCH','https://api.github.com/gists/'+this.gistId,body);},upload:function(){var self=this;if(!this.isConfigured())return Promise.reject(new Error('توکن تنظیم نشده'));if(this.uploading)return Promise.resolve('already-uploading');if(this.isRateLimited())return Promise.resolve('rate-limited');this.uploading=true;var content={version:2,timestamp:new Date().toISOString(),db:DB.data};var promise;if(!this.gistId){promise=this.findExistingGist().then(function(ex){return ex?self.updateGist(content):self.createGist(content);});}else{promise=this.updateGist(content);}return promise.then(function(r){self.uploading=false;return r;},function(e){self.uploading=false;throw e;});},download:function(){var self=this;if(!this.isConfigured())return Promise.reject(new Error('توکن تنظیم نشده'));if(this.isRateLimited())return Promise.reject(new Error('Rate limit'));if(!this.gistId){return this.findExistingGist().then(function(g){if(!g)throw new Error('فایل سینک پیدا نشد');return JSON.parse(g.files[self.fileName].content);});}return this.req('GET','https://api.github.com/gists/'+this.gistId).then(function(g){if(!g.files||!g.files[self.fileName])throw new Error('فایل نیست');return JSON.parse(g.files[self.fileName].content);});},debouncedUpload:function(){var self=this;if(!this.isConfigured())return;if(this.isRateLimited())return;if(this.autoSyncTimer)clearTimeout(this.autoSyncTimer);this.autoSyncTimer=setTimeout(function(){self.upload().then(function(){console.log('✅ GitHub sync OK');}).catch(function(e){console.log('❌ GitHub:',e.message);});},8000);},autoSync:function(){var self=this;if(!this.isConfigured())return Promise.resolve('not-configured');if(this.isRateLimited())return Promise.resolve('rate-limited');if(typeof isUserBusy==='function'&&isUserBusy())return Promise.resolve('busy');return this.download().then(function(data){if(!data||!data.db)return'invalid';var localSave=parseInt(localStorage.getItem('last_local_save')||'0');var cloudTime=new Date(data.timestamp).getTime();if(cloudTime>localSave+2000){DB.data=data.db;if(!DB.data.currencies)DB.data.currencies=DB.def().currencies;if(!DB.data.sms)DB.data.sms=DB.def().sms;if(!DB.data.meta)DB.data.meta={nextIds:{},lastRollover:{}};DB.initUD();try{localStorage.setItem(DB.key,DB.encrypt(DB.data));localStorage.setItem('last_local_save',Date.now().toString());}catch(e){}return'downloaded';}return'up-to-date';}).catch(function(e){console.log('GitHub autoSync:',e.message);return'error';});}};
 function showGitHubSettings(){var h='<h3><span>🐙 سینک GitHub</span><button class="close" onclick="closeM()">×</button></h3>';h+='<div style="font-size:11px;color:var(--st);padding:10px;background:rgba(99,102,241,.1);border-radius:8px;margin-bottom:12px;line-height:1.9">توکن رو از github.com بساز (فقط scope <b>gist</b>) و اینجا بذار.</div>';h+='<label>GitHub Personal Token</label>';h+='<input id="ghToken" type="password" value="'+(GitHubSync.token||'')+'" placeholder="ghp_xxxxxxxxxxxxxxxxx">';h+='<label>Gist ID (خالی بگذار)</label>';h+='<input id="ghGistId" value="'+(GitHubSync.gistId||'')+'" placeholder="خالی">';h+='<button class="btn b3" style="margin-top:8px" onclick="saveGitHubSettings()">💾 ذخیره</button>';if(GitHubSync.isConfigured()){h+='<div style="margin-top:16px;border-top:1px solid var(--glass-b);padding-top:12px">';h+='<button class="btn b1" style="margin-bottom:8px" onclick="ghUploadNow()">⬆️ آپلود به GitHub</button>';h+='<button class="btn b2" style="margin-bottom:8px" onclick="ghDownloadNow()">⬇️ دانلود از GitHub</button>';h+='<button class="btn b5" onclick="ghDisconnect()">🚫 قطع اتصال</button>';h+='</div>';}openM(h);}
 function saveGitHubSettings(){var tok=document.getElementById('ghToken').value.trim();var gid=document.getElementById('ghGistId').value.trim();if(!tok||tok.length<20){toast('توکن نامعتبر','err');return;}GitHubSync.saveToken(tok,gid||null);toast('✅','info');closeM();showGitHubSettings();}
 function ghUploadNow(){toast('🔄 آپلود...','info');GitHubSync.upload().then(function(r){if(r==='rate-limited')toast('⚠️ Rate Limit','wn');else toast('✅ موفق','info');}).catch(function(e){toast('❌ '+e.message,'err');});}
@@ -552,9 +575,40 @@ function showForgotPwd(){forgotUsername=null;var u=document.getElementById('lu')
 function resetPassword(){if(!forgotUsername){toast('خطا','err');return;}var user=DB.data.users.find(function(x){return x.username===forgotUsername;});var ans=document.getElementById('fpAnswer').value.trim();var np=document.getElementById('fpNewPwd').value.trim();var np2=document.getElementById('fpNewPwd2').value.trim();if(ans.toLowerCase().replace(/\s+/g,'')!==user.securityA.toLowerCase().replace(/\s+/g,'')){toast('❌ پاسخ اشتباه','err');return;}if(np.length<4){toast('حداقل ۴','err');return;}if(np!==np2){toast('یکسان نیست','err');return;}user.password=hashPwd(user.username,np);DB.save();closeM();forgotUsername=null;toast('✅','info');}
 function doLogin(){var u=document.getElementById('lu').value.trim();var p=document.getElementById('lp').value.trim();if(!u){toast('نام کاربری','err');return;}if(!p){toast('رمز','err');return;}var userByName=DB.data.users.find(function(x){return x.username===u;});if(!userByName){toast('کاربر نیست','err');return;}var ok=false;if(isHashed(userByName.password)){ok=(userByName.password===hashPwd(u,p));}else{ok=(userByName.password===p);if(ok){userByName.password=hashPwd(u,p);}}if(!ok){toast('رمز اشتباه','err');return;}DB.data.currentUserId=userByName.id;localStorage.setItem('last_login_user',userByName.username);DB.save();showApp();toast(userByName.isFamilyView?'👨‍👩‍👧 نمای خانواده':'خوش آمدی '+userByName.fullName,'info');}
 function updateHeaderAvatar(){var me=DB.currentUser();if(!me)return;var btn=document.getElementById('hd-avatar');if(!btn)return;if(me.avatar){btn.innerHTML='<img src="'+esc(me.avatar)+'" alt="">';}else{btn.textContent=getInitial(me.fullName);}}
-function showApp(){document.getElementById('login').style.display='none';document.getElementById('app').style.display='block';document.getElementById('print-date').textContent=J.full();autoBackup();updateHeaderAvatar();var isFam=DB.isFamilyView();var canManage=DB.canManage();if(isFam){document.getElementById('hd-title').textContent='👨‍👩‍👧 نمای کامل خانواده';document.getElementById('hd-sub').textContent='مجموع تمام کاربران';document.getElementById('family-welcome').style.display='block';document.getElementById('accounts-title').textContent='موجودی همه حساب‌ها';document.getElementById('invest-title').textContent='همه دارایی‌ها';document.getElementById('gold-title').textContent='💎 دارایی کل خانواده';document.getElementById('chart-title').textContent='📈 روند';document.getElementById('card-users').style.display='block';var nf=DB.data.users.filter(function(u){return !u.isFamilyView;});document.getElementById('family-members-count').textContent='شامل '+nf.length+' کاربر: '+nf.map(function(u){return u.fullName;}).join(' • ');}else if(canManage){document.getElementById('card-users').style.display='block';}else{document.getElementById('card-users').style.display='none';}
-var csel=document.getElementById('dashChartType');if(csel)csel.value=getDashChartType();
-startClock();checkRollover();refreshAll();setTimeout(fetchAllPrices,500);setTimeout(checkAndSendSms,2000);setTimeout(checkAndNotify,1500);setInterval(fetchAllPrices,180000);setInterval(function(){checkAndSendSms();checkAndNotify();},300000);if(GitHubSync.isConfigured()&&!GitHubSync.isRateLimited()){setTimeout(function(){GitHubSync.autoSync().then(function(r){if(r==='downloaded'){toast('🐙 از GitHub دانلود شد','info');setTimeout(function(){location.reload();},1500);}});},3000);}}
+function showApp(){
+  document.getElementById('login').style.display='none';
+  document.getElementById('app').style.display='block';
+  document.getElementById('print-date').textContent=J.full();
+  autoBackup();updateHeaderAvatar();
+  var isFam=DB.isFamilyView();var canManage=DB.canManage();
+  if(isFam){
+    document.getElementById('hd-title').textContent='👨‍👩‍👧 نمای کامل خانواده';
+    document.getElementById('hd-sub').textContent='مجموع تمام کاربران';
+    document.getElementById('family-welcome').style.display='block';
+    document.getElementById('accounts-title').textContent='موجودی همه حساب‌ها';
+    document.getElementById('invest-title').textContent='همه دارایی‌ها';
+    document.getElementById('gold-title').textContent='💎 دارایی کل خانواده';
+    document.getElementById('chart-title').textContent='📈 روند';
+    document.getElementById('card-users').style.display='block';
+    var nf=DB.data.users.filter(function(u){return !u.isFamilyView;});
+    document.getElementById('family-members-count').textContent='شامل '+nf.length+' کاربر: '+nf.map(function(u){return u.fullName;}).join(' • ');
+  }else if(canManage){document.getElementById('card-users').style.display='block';}
+  else{document.getElementById('card-users').style.display='none';}
+  var csel=document.getElementById('dashChartType');if(csel)csel.value=getDashChartType();
+  startClock();checkRollover();refreshAll();
+  setTimeout(fetchAllPrices,500);
+  setTimeout(checkAndSendSms,2000);
+  setTimeout(checkAndNotify,1500);
+  setInterval(fetchAllPrices,180000);
+  setInterval(function(){checkAndSendSms();checkAndNotify();},300000);
+  if(GitHubSync.isConfigured()&&!GitHubSync.isRateLimited()){
+    setTimeout(function(){
+      GitHubSync.autoSync().then(function(r){
+        if(r==='downloaded'){toast('🐙 از GitHub دانلود شد','info');setTimeout(safeSyncReload,1500);}
+      });
+    },3000);
+  }
+}
 function doLogout(){if(!confirm('خارج می‌شوی؟'))return;DB.data.currentUserId=null;DB.save();location.reload();}
 function checkRollover(){if(DB.isFamilyView())return;var uid=DB.data.currentUserId;if(!uid)return;var mk=J.monthKey();if(DB.data.meta.lastRollover[uid]===mk)return;DB.data.meta.lastRollover[uid]=mk;DB.save();}
 function go(n,el){document.querySelectorAll('.pg').forEach(function(p){p.classList.remove('on');});document.getElementById('pg-'+n).classList.add('on');document.querySelectorAll('.nav div').forEach(function(x){x.classList.remove('on');});el.classList.add('on');if(n==='dash')rDash();if(n==='tx')rTx();if(n==='inv')rInv();if(n==='rep')initReport();if(n==='rem')rRem();if(n==='set')rSet();}
@@ -685,7 +739,7 @@ function rDash(){
   drawDashChart(ud);rInvestDash(ud);rUsd();rFamily();
 }
 
-// ============ نمودار داشبورد (چند نوعی) ============
+// ============ نمودار داشبورد ============
 var dashChartInstance=null;
 function drawDashChart(ud){
   var canvas=document.getElementById('chart7');if(!canvas)return;
@@ -718,27 +772,12 @@ function drawDashChart(ud){
   };
   var totalIn=data.inc.reduce(function(a,b){return a+b;},0);
   var totalEx=data.exp.reduce(function(a,b){return a+b;},0);
-
-  if(chartType==='doughnut'){
-    dashChartInstance=new Chart(ctx,{type:'doughnut',data:{labels:['درآمد','هزینه'],datasets:[{data:[totalIn,totalEx],backgroundColor:['rgba(16,185,129,.8)','rgba(244,63,94,.8)'],borderColor:['#10b981','#f43f5e'],borderWidth:2}]},options:commonOpts});
-    return;
-  }
-  if(chartType==='polarArea'){
-    dashChartInstance=new Chart(ctx,{type:'polarArea',data:{labels:['درآمد','هزینه'],datasets:[{data:[totalIn,totalEx],backgroundColor:['rgba(16,185,129,.7)','rgba(244,63,94,.7)']}]},options:commonOpts});
-    return;
-  }
-  if(chartType==='radar'){
-    dashChartInstance=new Chart(ctx,{type:'radar',data:{labels:['درآمد','هزینه'],datasets:[{label:'خلاصه',data:[totalIn,totalEx],backgroundColor:'rgba(99,102,241,.3)',borderColor:'#6366f1',borderWidth:2,pointBackgroundColor:['#10b981','#f43f5e'],pointRadius:5}]},options:commonOpts});
-    return;
-  }
+  if(chartType==='doughnut'){dashChartInstance=new Chart(ctx,{type:'doughnut',data:{labels:['درآمد','هزینه'],datasets:[{data:[totalIn,totalEx],backgroundColor:['rgba(16,185,129,.8)','rgba(244,63,94,.8)'],borderColor:['#10b981','#f43f5e'],borderWidth:2}]},options:commonOpts});return;}
+  if(chartType==='polarArea'){dashChartInstance=new Chart(ctx,{type:'polarArea',data:{labels:['درآمد','هزینه'],datasets:[{data:[totalIn,totalEx],backgroundColor:['rgba(16,185,129,.7)','rgba(244,63,94,.7)']}]},options:commonOpts});return;}
+  if(chartType==='radar'){dashChartInstance=new Chart(ctx,{type:'radar',data:{labels:['درآمد','هزینه'],datasets:[{label:'خلاصه',data:[totalIn,totalEx],backgroundColor:'rgba(99,102,241,.3)',borderColor:'#6366f1',borderWidth:2,pointBackgroundColor:['#10b981','#f43f5e'],pointRadius:5}]},options:commonOpts});return;}
   if(chartType==='candlestick'){
     var running=0;
-    ud.transactions.forEach(function(t){
-      if(t.type==='rollover')return;
-      if(t.date>=d1)return;
-      if(t.type==='income')running+=t.amount;
-      else if(t.type==='expense')running-=t.amount;
-    });
+    ud.transactions.forEach(function(t){if(t.type==='rollover')return;if(t.date>=d1)return;if(t.type==='income')running+=t.amount;else if(t.type==='expense')running-=t.amount;});
     var ohlc=[];
     for(var ci=0;ci<data.labels.length;ci++){
       var open=running;
@@ -750,28 +789,13 @@ function drawDashChart(ud){
       running=close;
     }
     try{
-      dashChartInstance=new Chart(ctx,{
-        type:'candlestick',
-        data:{datasets:[{label:'مانده',data:ohlc,color:{up:'#10b981',down:'#f43f5e',unchanged:'#94a3b8'}}]},
-        options:Object.assign({},commonOpts,{
-          scales:{
-            x:{type:'category',labels:data.labels,ticks:{color:'#94a3b8',font:{family:'Vazirmatn',size:9},maxRotation:45,autoSkip:true,maxTicksLimit:14},grid:{display:false}},
-            y:{ticks:{color:'#94a3b8',font:{family:'Vazirmatn',size:10},callback:function(v){return fmt(v);}},grid:{color:'rgba(148,163,184,.12)'}}
-          }
-        })
-      });
+      dashChartInstance=new Chart(ctx,{type:'candlestick',data:{datasets:[{label:'مانده',data:ohlc,color:{up:'#10b981',down:'#f43f5e',unchanged:'#94a3b8'}}]},options:Object.assign({},commonOpts,{scales:{x:{type:'category',labels:data.labels,ticks:{color:'#94a3b8',font:{family:'Vazirmatn',size:9},maxRotation:45,autoSkip:true,maxTicksLimit:14},grid:{display:false}},y:{ticks:{color:'#94a3b8',font:{family:'Vazirmatn',size:10},callback:function(v){return fmt(v);}},grid:{color:'rgba(148,163,184,.12)'}}}})});
       return;
-    }catch(e){
-      console.warn('Candlestick plugin failed, fallback to bar:',e.message);
-      localStorage.setItem('dash_chart_type','bar');
-      drawDashChart(ud);
-      return;
-    }
+    }catch(e){console.warn('Candlestick failed, fallback:',e.message);localStorage.setItem('dash_chart_type','bar');drawDashChart(ud);return;}
   }
   var ds1,ds2;
   if(chartType==='line'||chartType==='curve'||chartType==='area'){
-    var ten=(chartType==='curve')?0.4:0;
-    var fill=(chartType==='area');
+    var ten=(chartType==='curve')?0.4:0;var fill=(chartType==='area');
     ds1={label:'درآمد',data:data.inc,borderColor:'#10b981',backgroundColor:fill?'rgba(16,185,129,.25)':'rgba(16,185,129,.1)',borderWidth:2,tension:ten,pointRadius:3,pointBackgroundColor:'#10b981',pointBorderColor:'#10b981',fill:fill};
     ds2={label:'هزینه',data:data.exp,borderColor:'#f43f5e',backgroundColor:fill?'rgba(244,63,94,.25)':'rgba(244,63,94,.1)',borderWidth:2,tension:ten,pointRadius:3,pointBackgroundColor:'#f43f5e',pointBorderColor:'#f43f5e',fill:fill};
   }else{
@@ -780,17 +804,7 @@ function drawDashChart(ud){
   }
   var ctype=(chartType==='line'||chartType==='curve'||chartType==='area')?'line':'bar';
   var idxAxis=(chartType==='hbar')?'y':'x';
-  dashChartInstance=new Chart(ctx,{
-    type:ctype,
-    data:{labels:data.labels,datasets:[ds1,ds2]},
-    options:Object.assign({},commonOpts,{
-      indexAxis:idxAxis,
-      scales:{
-        x:{ticks:{color:'#94a3b8',font:{family:'Vazirmatn',size:9},maxRotation:45,autoSkip:true,maxTicksLimit:14},grid:{display:false}},
-        y:{ticks:{color:'#94a3b8',font:{family:'Vazirmatn',size:10},callback:function(v){return fmt(v);}},grid:{color:'rgba(148,163,184,.12)'}}
-      }
-    })
-  });
+  dashChartInstance=new Chart(ctx,{type:ctype,data:{labels:data.labels,datasets:[ds1,ds2]},options:Object.assign({},commonOpts,{indexAxis:idxAxis,scales:{x:{ticks:{color:'#94a3b8',font:{family:'Vazirmatn',size:9},maxRotation:45,autoSkip:true,maxTicksLimit:14},grid:{display:false}},y:{ticks:{color:'#94a3b8',font:{family:'Vazirmatn',size:10},callback:function(v){return fmt(v);}},grid:{color:'rgba(148,163,184,.12)'}}}})});
 }
 
 // ============ قیمت‌های آنلاین ============
@@ -800,7 +814,6 @@ var FIAT_ORDER=['USD','EUR','GBP','AED','TRY','CNY','IQD','RUB','KWD','JPY','CHF
 var NAVASAN_FIAT='https://raw.githubusercontent.com/HosseinOdd/Navasan-API/main/data/fiat.json';
 var NAVASAN_GOLD='https://raw.githubusercontent.com/HosseinOdd/Navasan-API/main/data/gold.json';
 var GTA_SILVER='https://gtasilver.com/api/silver-price';
-
 function syncInvestmentPrices(){
   var p=DB.data.prices||{};var fiat=p.fiat||{};var metals=p.metals||{};var updated=0;
   DB.data.users.forEach(function(user){
@@ -880,7 +893,6 @@ function saveManualPricesFromForm(){
   rUsd();rDash();rSet();
   if(document.getElementById('pg-inv').classList.contains('on'))rInv();
 }
-
 function rUsd(){
   var box=document.getElementById('usd-box');var dot=document.getElementById('usd-live-dot');
   if(!box)return;
@@ -918,7 +930,6 @@ function rUsd(){
   html+='</div>';
   box.innerHTML=html;
 }
-
 function calcInvValue(inv){
   if(inv.kind==='rent')return 0;
   if(inv.kind==='cash')return inv.qty||0;
@@ -926,7 +937,6 @@ function calcInvValue(inv){
   var p=inv.price||inv.buyPrice||0;return inv.qty*p;
 }
 function getInvIco(inv){if(inv.kind==='crypto')return(POPULAR_CRYPTO.find(function(c){return c.id===inv.coinId;})||{}).ico||'🪙';if(inv.kind==='fiat')return'💵';if(inv.kind==='stock')return'📊';if(inv.kind==='metal')return'🥇';if(inv.kind==='cash')return'💰';if(inv.kind==='credit')return'💳';if(inv.kind==='fund')return'📈';if(inv.kind==='rent')return'🏠';return'📈';}
-
 function groupInvestmentsForDash(invs){
   var groups = {};
   invs.forEach(function(inv){
@@ -957,7 +967,6 @@ function groupInvestmentsForDash(invs){
   });
   return Object.keys(groups).map(function(k){return groups[k];});
 }
-
 function rInvestDash(ud){
   var box=document.getElementById('invest-box');
   var invs=ud.investments.filter(function(i){return i.kind!=='rent';});
@@ -999,7 +1008,6 @@ function rInvestDash(ud){
   });
   box.innerHTML = html;
 }
-
 function rAccList(){var ud=DB.ud();if(!ud)return;var el=document.getElementById('acl');if(!el)return;var isFam=DB.isFamilyView();var html='';if(isFam){var byUser={};ud.accounts.forEach(function(a){var un=a._userName||'نامشخص';if(!byUser[un])byUser[un]=[];byUser[un].push(a);});Object.keys(byUser).forEach(function(un){var arr=byUser[un];var sum=0;html+='<div style="font-size:12px;color:#c4b5fd;margin:10px 0 4px;font-weight:700">👤 '+esc(un)+'</div>';arr.forEach(function(a){var b=accBalance(ud,a.id,a._userId);sum+=b;var uidAttr=a._userId||0;html+='<div class="row"><div style="flex:1">🏦 '+esc(a.name)+'</div><b class="'+(b>=0?'inc':'exp')+'">'+fmt(b)+'</b><button class="btn b5" style="max-width:36px;padding:5px 8px;font-size:11px;margin:0" onclick="editAcc('+a.id+','+uidAttr+')">✏️</button><button class="btn b4" style="max-width:36px;padding:5px 8px;font-size:11px;margin:0" onclick="delAcc('+a.id+','+uidAttr+')">🗑️</button></div>';});html+='<div class="row"><b style="color:var(--s1)">💰 جمع</b><b class="inc">'+fmt(sum)+'</b></div>';});}else{ud.accounts.forEach(function(a){var b=accBalance(ud,a.id);html+='<div class="row"><div style="flex:1;cursor:pointer" onclick="editAcc('+a.id+')">🏦 '+esc(a.name)+'<small>'+esc(a.type||'card')+' • '+esc(a.currency)+'</small></div><b class="'+(b>=0?'inc':'exp')+'">'+fmt(b)+'</b><button class="btn b4" style="max-width:36px;padding:5px 8px;font-size:11px;margin:0" onclick="event.stopPropagation();delAcc('+a.id+')">🗑️</button></div>';});}el.innerHTML=html||'<div class="empty">حسابی نداری</div>';}
 function sellAsset(invId,uid){
   var targetUid=(uid!=null)?uid:DB.data.currentUserId;
@@ -1044,7 +1052,6 @@ function rInv(){
   if(isFam){var byUser={};invs.forEach(function(inv){var un=inv._userName||'نامشخص';if(!byUser[un])byUser[un]=[];byUser[un].push(inv);});ud.accounts.forEach(function(a){var un=a._userName||'نامشخص';if(!byUser[un])byUser[un]=[];});var sumHtml='<div class="stat" style="background:var(--grad-gold);border:none;grid-column:span 2"><small style="color:rgba(255,255,255,.9)">💎 مجموع کل</small><b style="color:#fff;font-size:22px">'+fmt(grandTotal)+' تومان</b></div>';var secHtml='';Object.keys(byUser).forEach(function(un){var arr=byUser[un];var uAccSum=0;ud.accounts.forEach(function(a){if(a._userName===un)uAccSum+=accBalance(ud,a.id,a._userId);});var uAssetSum=0;arr.forEach(function(inv){uAssetSum+=calcInvValue(inv);});var uTotal=uAccSum+uAssetSum;sumHtml+='<div class="stat" style="background:rgba(139,92,246,.15)"><small>👤 '+esc(un)+'</small><b class="net">'+fmt(uTotal)+'</b></div>';var cardId='fam-'+Math.random().toString(36).slice(2,8);secHtml+='<div class="card" id="'+cardId+'"><div class="card-hdr" onclick="toggleCard(\''+cardId+'\')"><h3>👤 '+esc(un)+' — '+fmt(uTotal)+'</h3><span class="arrow">▼</span></div><div class="card-body">';var uAccs=ud.accounts.filter(function(a){return a._userName===un;});if(uAccs.length){secHtml+='<div style="font-size:11px;color:var(--st);margin-bottom:4px;font-weight:700">🏦 حساب‌ها</div>';uAccs.forEach(function(a){var b=accBalance(ud,a.id,a._userId);secHtml+='<div class="row"><div style="flex:1">'+esc(a.name)+'</div><b class="'+(b>=0?'inc':'exp')+'">'+fmt(b)+'</b></div>';});}if(arr.length){secHtml+='<div style="font-size:11px;color:var(--st);margin:10px 0 4px;font-weight:700">💼 دارایی‌ها</div>';arr.forEach(function(inv){var val=calcInvValue(inv);var uidAttr=inv._userId||0;secHtml+='<div class="row"><div style="flex:1">'+getInvIco(inv)+' '+esc(inv.name)+'</div><b class="net">'+fmt(val)+'</b><button class="btn b5" style="max-width:36px;padding:5px 8px;font-size:11px;margin:0" onclick="editInvest('+inv.id+','+uidAttr+')">✏️</button><button class="btn b4" style="max-width:36px;padding:5px 8px;font-size:11px;margin:0" onclick="delInvest('+inv.id+','+uidAttr+')">🗑️</button></div>';});}if(!uAccs.length&&!arr.length)secHtml+='<div class="empty">چیزی ثبت نشده</div>';secHtml+='</div></div>';});summary.innerHTML=sumHtml;el.innerHTML=secHtml||'<div class="empty">خالی</div>';return;}
   var html='';var sumH='';Object.keys(names).forEach(function(k){var arr=groups[k]||[];var sum=0;arr.forEach(function(inv){sum+=calcInvValue(inv);});sumH+='<div class="stat" style="background:rgba(15,23,42,.4)"><small>'+names[k]+'</small><b class="net">'+fmt(sum)+'</b></div>';if(!arr.length)return;var cardId='sec-'+k+'-'+Math.random().toString(36).slice(2,8);html+='<div class="card" id="'+cardId+'"><div class="card-hdr" onclick="toggleCard(\''+cardId+'\')"><h3>'+names[k]+' — '+fmt(sum)+'</h3><span class="arrow">▼</span></div><div class="card-body">';arr.forEach(function(inv){var price=(inv.kind==='cash')?1:(inv.price||inv.buyPrice||0);var val=(inv.kind==='cash')?inv.qty:inv.qty*price;var buyVal=inv.qty*(inv.buyPrice||0);var profit=val-buyVal;var pct=buyVal?(profit/buyVal*100):0;var cls=profit>=0?'inc':'exp';var ico=getInvIco(inv);var profitTxt=(buyVal&&price&&inv.kind!=='cash')?((profit>=0?'+':'-')+fmt(Math.abs(profit))+' ('+pct.toFixed(1)+'%)'):'—';var acts='<div style="display:flex;gap:4px;flex-direction:column"><button class="btn b3" style="max-width:36px;padding:6px 8px;font-size:11px;margin:0" onclick="sellAsset('+inv.id+')">💰</button><button class="btn b5" style="max-width:36px;padding:6px 8px;font-size:11px;margin:0" onclick="editInvest('+inv.id+')">✏️</button><button class="btn b4" style="max-width:36px;padding:6px 8px;font-size:11px;margin:0" onclick="delInvest('+inv.id+')">🗑️</button></div>';var detailTxt=(inv.kind==='cash')?'مبلغ نقد':(inv.qty+' × '+fmt(price));html+='<div class="price-row"><div class="name" style="flex:1"><div class="coin-ico">'+ico+'</div><div style="flex:1"><div>'+esc(inv.name)+'</div><small style="color:var(--st);font-size:10px">'+detailTxt+'</small><div><b class="'+(inv.kind==='cash'?'net':cls)+'">'+fmt(val)+'</b> <span class="'+cls+'" style="font-size:10px">'+profitTxt+'</span></div></div></div>'+acts+'</div>';});html+='</div></div>';});summary.innerHTML='<div class="stat" style="background:var(--grad-gold);border:none;grid-column:span 2"><small style="color:rgba(255,255,255,.9)">💎 مجموع کل</small><b style="color:#fff;font-size:22px">'+fmt(grandTotal)+' تومان</b></div>'+sumH;el.innerHTML=html||'<div class="empty">هنوز دارایی نداری</div>';
 }
-
 function getLivePrice(kind,code){
   var p=DB.data.prices||{};
   if(kind==='fiat'){if(code==='USD')return p.usd||0;return (p.fiat&&p.fiat[code])||0;}
@@ -1074,7 +1081,6 @@ function updateInvestTotal(){
   if(price>0&&qty>0){totalEl.style.display='block';totalEl.innerHTML='<div style="padding:10px;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.3);border-radius:10px;font-size:13px;text-align:center"><b>'+qty+' × '+fmt(price)+' = </b><b style="color:var(--ok);font-size:16px">'+fmt(qty*price)+'</b> تومان</div>';}
   else{totalEl.style.display='none';}
 }
-
 function showInvestForm(kind,editUid){
   kind=kind||'crypto';
   var isFam=DB.isFamilyView();
@@ -1266,29 +1272,64 @@ function buildTxAccounts(ud){
   });
   return list;
 }
-function findFirstInvestment(ud, kind, code){
-  for(var i=0;i<ud.investments.length;i++){var inv = ud.investments[i];if(inv.kind !== kind) continue;if(kind==='fiat' && inv.fiatCode !== code) continue;if(kind==='metal' && inv.metalCode !== code) continue;return inv;}
+function findFirstInvestment(ud, kind, code, uid){
+  for(var i=0;i<ud.investments.length;i++){
+    var inv=ud.investments[i];
+    if(inv.kind!==kind)continue;
+    if(uid!=null&&inv._userId!=null&&inv._userId!==uid)continue;
+    if(kind==='fiat'&&inv.fiatCode!==code)continue;
+    if(kind==='metal'&&inv.metalCode!==code)continue;
+    return inv;
+  }
   return null;
 }
 function createNewInvestment(ud, kind, code){
-  var id = DB.nid('inv');
-  var inv = {id:id, kind:kind, qty:0, buyPrice:0, price:0};
-  if(kind==='cash'){ inv.name='پول نقد'; inv.price=1; inv.buyPrice=1; }
-  else if(kind==='fiat'){ inv.fiatCode=code; inv.name=FIAT_NAMES[code]||code; inv.symbol=code; var p=getLivePrice('fiat',code); inv.price=p; inv.buyPrice=p; }
-  else if(kind==='metal'){ inv.metalCode=code; inv.name=({GOLD18:'طلای ۱۸',GOLD24:'طلای ۲۴',SILVER:'نقره'})[code]||code; var p2=getLivePrice('metal',code); inv.price=p2; inv.buyPrice=p2; }
+  var id=DB.nid('inv');
+  var inv={id:id,kind:kind,qty:0,buyPrice:0,price:0};
+  if(kind==='cash'){inv.name='پول نقد';inv.price=1;inv.buyPrice=1;}
+  else if(kind==='fiat'){inv.fiatCode=code;inv.name=FIAT_NAMES[code]||code;inv.symbol=code;var p=getLivePrice('fiat',code);inv.price=p;inv.buyPrice=p;}
+  else if(kind==='metal'){inv.metalCode=code;inv.name=({GOLD18:'طلای ۱۸',GOLD24:'طلای ۲۴',SILVER:'نقره'})[code]||code;var p2=getLivePrice('metal',code);inv.price=p2;inv.buyPrice=p2;}
   ud.investments.push(inv);
   return inv;
 }
 function parseTxValue(val){var parts=val.split(':');return {type:parts[0],uid:parseInt(parts[1])||0,id:parseInt(parts[2])||0,code:parts[3]||null};}
+
+// ============ پیدا کردن موجودیت تراکنش با فیلتر uid ============
 function findTxEntityInfo(t,side,ud){
   var type,id,code;
   if(side==='from'){type=t.fromType||'account';id=(t.fromId!=null)?t.fromId:t.accountId;code=t.fromCode;}
   else{type=t.toType||'account';id=(t.toId!=null)?t.toId:t.toAccountId;code=t.toCode;}
-  if(type==='account'){var a=ud.accounts.find(function(x){return x.id===id||x._origId===id;});return{type:type,id:id,name:a?a.name:'حساب',obj:a};}
-  if(type==='cash'){var firstCash=ud.investments.find(function(x){return x.kind==='cash';});if(id==null||id===0)return{type:'cash',id:0,name:'پول نقد',obj:firstCash};var c=ud.investments.find(function(x){return x.id===id||x._origId===id;});return{type:'cash',id:id,name:c?c.name:'پول نقد',obj:c};}
-  if(type==='fiat'){var f=ud.investments.find(function(x){return (x.id===id||x._origId===id)||(id===0&&x.kind==='fiat'&&x.fiatCode===code);});var nm=(FIAT_NAMES[code]||(f?f.name:''))||'ارز';return{type:'fiat',id:id,code:code,name:nm,obj:f};}
-  if(type==='metal'){var m=ud.investments.find(function(x){return (x.id===id||x._origId===id)||(id===0&&x.kind==='metal'&&x.metalCode===code);});var mnames={GOLD18:'طلای ۱۸',GOLD24:'طلای ۲۴',SILVER:'نقره'};var nm2=(mnames[code]||(m?m.name:'فلز'))||'فلز';return{type:'metal',id:id,code:code,name:nm2,obj:m};}
-  if(type==='credit'){var cr=ud.investments.find(function(x){return x.id===id||x._origId===id;});return{type:'credit',id:id,name:cr?cr.name:'اعتبار',obj:cr};}
+  var uid=(t._userId!=null)?t._userId:null;
+  function matchByUid(x){
+    if(uid==null)return true;
+    if(x._userId==null)return true;
+    return x._userId===uid;
+  }
+  if(type==='account'){
+    var a=ud.accounts.find(function(x){return (x.id===id||x._origId===id)&&matchByUid(x);});
+    return{type:type,id:id,name:a?a.name:'حساب',obj:a};
+  }
+  if(type==='cash'){
+    var firstCash=ud.investments.find(function(x){return x.kind==='cash'&&matchByUid(x);});
+    if(id==null||id===0)return{type:'cash',id:0,name:'پول نقد',obj:firstCash};
+    var c=ud.investments.find(function(x){return (x.id===id||x._origId===id)&&matchByUid(x);});
+    return{type:'cash',id:id,name:c?c.name:'پول نقد',obj:c};
+  }
+  if(type==='fiat'){
+    var f=ud.investments.find(function(x){return ((x.id===id||x._origId===id)||(id===0&&x.kind==='fiat'&&x.fiatCode===code))&&matchByUid(x);});
+    var nm=(FIAT_NAMES[code]||(f?f.name:''))||'ارز';
+    return{type:'fiat',id:id,code:code,name:nm,obj:f};
+  }
+  if(type==='metal'){
+    var m=ud.investments.find(function(x){return ((x.id===id||x._origId===id)||(id===0&&x.kind==='metal'&&x.metalCode===code))&&matchByUid(x);});
+    var mnames={GOLD18:'طلای ۱۸',GOLD24:'طلای ۲۴',SILVER:'نقره'};
+    var nm2=(mnames[code]||(m?m.name:'فلز'))||'فلز';
+    return{type:'metal',id:id,code:code,name:nm2,obj:m};
+  }
+  if(type==='credit'){
+    var cr=ud.investments.find(function(x){return (x.id===id||x._origId===id)&&matchByUid(x);});
+    return{type:'credit',id:id,name:cr?cr.name:'اعتبار',obj:cr};
+  }
   return{type:type,id:id,name:'—',obj:null};
 }
 function applyInvestmentTransfer(ud,trans,reverse){
@@ -1512,25 +1553,14 @@ function drawRepChart(ud,range){
   var ctx=canvas.getContext('2d');
   reportChartInstance=new Chart(ctx,{
     type:'bar',
-    data:{
-      labels:data.labels,
-      datasets:[
-        {label:'درآمد',data:data.inc,backgroundColor:'rgba(16,185,129,.6)',borderRadius:6},
-        {label:'هزینه',data:data.exp,backgroundColor:'rgba(244,63,94,.6)',borderRadius:6},
-        {label:'مانده',data:netData,type:'line',borderColor:'#06b6d4',backgroundColor:'rgba(6,182,212,.1)',borderWidth:2,tension:.3,pointRadius:3}
-      ]
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,
-      animation:{duration:400},
-      plugins:{
-        legend:{labels:{color:'#94a3b8',font:{family:'Vazirmatn'}}},
-        tooltip:{callbacks:{label:function(c){return c.dataset.label+': '+fmt(c.raw)+' تومان';}}}
-      },
-      scales:{
-        x:{ticks:{color:'#94a3b8',font:{family:'Vazirmatn'},maxRotation:45,autoSkip:true,maxTicksLimit:16},grid:{display:false}},
-        y:{ticks:{color:'#94a3b8',font:{family:'Vazirmatn'},callback:function(v){return fmt(v);}},grid:{color:'rgba(148,163,184,.12)'}}
-      }
+    data:{labels:data.labels,datasets:[
+      {label:'درآمد',data:data.inc,backgroundColor:'rgba(16,185,129,.6)',borderRadius:6},
+      {label:'هزینه',data:data.exp,backgroundColor:'rgba(244,63,94,.6)',borderRadius:6},
+      {label:'مانده',data:netData,type:'line',borderColor:'#06b6d4',backgroundColor:'rgba(6,182,212,.1)',borderWidth:2,tension:.3,pointRadius:3}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,animation:{duration:400},
+      plugins:{legend:{labels:{color:'#94a3b8',font:{family:'Vazirmatn'}}},tooltip:{callbacks:{label:function(c){return c.dataset.label+': '+fmt(c.raw)+' تومان';}}}},
+      scales:{x:{ticks:{color:'#94a3b8',font:{family:'Vazirmatn'},maxRotation:45,autoSkip:true,maxTicksLimit:16},grid:{display:false}},y:{ticks:{color:'#94a3b8',font:{family:'Vazirmatn'},callback:function(v){return fmt(v);}},grid:{color:'rgba(148,163,184,.12)'}}}
     }
   });
 }
@@ -1728,15 +1758,38 @@ updateFpBtn();
 if(GitHubSync.isConfigured()&&!GitHubSync.isRateLimited()){
 try{
 GitHubSync.autoSync().then(function(r){
-if(r==='downloaded'){if(typeof toast==='function')toast('🐙 اطلاعات از GitHub دانلود شد','info');setTimeout(function(){location.reload();},1200);}
+if(r==='downloaded'){if(typeof toast==='function')toast('🐙 اطلاعات از GitHub دانلود شد','info');setTimeout(safeSyncReload,1200);}
 else{if(DB.data&&DB.data.currentUserId){showApp();}else{updateSyncStatus();}}
 }).catch(function(e){console.log('Sync on load:',e.message);if(DB.data&&DB.data.currentUserId){showApp();}else{updateSyncStatus();}});
 }catch(e){if(DB.data&&DB.data.currentUserId){showApp();}else{updateSyncStatus();}}
 }else{if(DB.data&&DB.data.currentUserId){showApp();}else{updateSyncStatus();}}
+
 window.addEventListener('resize',function(){if(DB.data&&DB.data.currentUserId){clearTimeout(window._rszT);window._rszT=setTimeout(function(){rDash();},250);}});
-document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'&&DB.data&&DB.data.currentUserId&&GitHubSync.isConfigured()&&!GitHubSync.isRateLimited()){GitHubSync.autoSync().then(function(r){if(r==='downloaded'){toast('🐙 بروزرسانی شد','info');setTimeout(function(){location.reload();},1000);}});}});
-setInterval(function(){if(DB.data&&DB.data.currentUserId&&GitHubSync.isConfigured()&&!GitHubSync.isRateLimited()){GitHubSync.autoSync().then(function(r){if(r==='downloaded'){toast('🐙 بروزرسانی شد','info');setTimeout(function(){location.reload();},1000);}});}},120000);
-setTimeout(function(){try{refreshAll();}catch(e){}},300);
+
+var _lastHidden=Date.now();
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='hidden'){_lastHidden=Date.now();return;}
+  if(document.visibilityState!=='visible')return;
+  var hiddenFor=Date.now()-_lastHidden;
+  if(hiddenFor<120000)return;
+  if(!DB.data||!DB.data.currentUserId)return;
+  if(!GitHubSync.isConfigured()||GitHubSync.isRateLimited())return;
+  if(isUserBusy())return;
+  GitHubSync.autoSync().then(function(r){
+    if(r==='downloaded'){toast('🐙 بروزرسانی شد','info');setTimeout(safeSyncReload,1500);}
+  });
+});
+
+setInterval(function(){
+  if(!DB.data||!DB.data.currentUserId)return;
+  if(!GitHubSync.isConfigured()||GitHubSync.isRateLimited())return;
+  if(isUserBusy())return;
+  GitHubSync.autoSync().then(function(r){
+    if(r==='downloaded'){toast('🐙 بروزرسانی شد','info');setTimeout(safeSyncReload,1500);}
+  });
+},300000);
+
+setTimeout(function(){try{refreshAll();}catch(e){}},600);
 });
 </script>
 </body>
