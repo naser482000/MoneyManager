@@ -1786,6 +1786,56 @@ function runReport(){
       html+='</div></div>';
     }
   }
+  var typeNames={income:'درآمد',expense:'هزینه',transfer:'انتقال',rollover:'—'};
+  var sortedTxs=txs.slice().sort(function(a,b){return(a.date+(a.time||'')).localeCompare(b.date+(b.time||''));});
+  var totalInc=0,totalExp=0,totalTrf=0;
+  sortedTxs.forEach(function(t){if(t.type==='income')totalInc+=t.amount;else if(t.type==='expense')totalExp+=t.amount;else if(t.type==='transfer')totalTrf+=t.amount;});
+  html+='<div class="card open" id="rep-detail"><div class="card-hdr" onclick="toggleCard(\'rep-detail\')"><h3>📋 ریز تراکنش‌ها ('+sortedTxs.length+')</h3><span class="arrow">▼</span></div><div class="card-body">';
+  if(!sortedTxs.length){
+    html+='<div class="empty">تراکنشی در این بازه نیست</div>';
+  }else{
+    html+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">';
+    html+='<thead><tr style="background:rgba(99,102,241,.15)">';
+    html+='<th style="padding:6px;border:1px solid var(--glass-b)">#</th>';
+    html+='<th style="padding:6px;border:1px solid var(--glass-b)">تاریخ</th>';
+    html+='<th style="padding:6px;border:1px solid var(--glass-b)">ساعت</th>';
+    html+='<th style="padding:6px;border:1px solid var(--glass-b)">نوع</th>';
+    html+='<th style="padding:6px;border:1px solid var(--glass-b)">مبلغ</th>';
+    html+='<th style="padding:6px;border:1px solid var(--glass-b)">مبدأ</th>';
+    html+='<th style="padding:6px;border:1px solid var(--glass-b)">مقصد</th>';
+    html+='<th style="padding:6px;border:1px solid var(--glass-b)">منبع/دسته</th>';
+    html+='<th style="padding:6px;border:1px solid var(--glass-b)">توضیح</th>';
+    html+='<th style="padding:6px;border:1px solid var(--glass-b)">کاربر</th>';
+    html+='</tr></thead><tbody>';
+    sortedTxs.forEach(function(t,i){
+      var fr=findTxEntityInfo(t,'from',ud);
+      var to=(t.type==='transfer')?findTxEntityInfo(t,'to',ud):null;
+      var extra='';
+      if(t.type==='income'){var s=ud.sources.find(function(x){return x.id===t.sourceId;});extra=s?s.name:'';}
+      else if(t.type==='expense'){var c=ud.categories.find(function(x){return x.id===t.categoryId;});extra=c?c.name:'';}
+      var cls=t.type==='income'?'inc':t.type==='expense'?'exp':'net';
+      html+='<tr>';
+      html+='<td style="padding:5px;border:1px solid var(--glass-b);text-align:center">'+(i+1)+'</td>';
+      html+='<td style="padding:5px;border:1px solid var(--glass-b);text-align:center">'+J.toJ(t.date)+'</td>';
+      html+='<td style="padding:5px;border:1px solid var(--glass-b);text-align:center">'+(t.time||'—')+'</td>';
+      html+='<td style="padding:5px;border:1px solid var(--glass-b);text-align:center">'+(typeNames[t.type]||t.type)+'</td>';
+      html+='<td style="padding:5px;border:1px solid var(--glass-b);text-align:center;font-weight:700" class="'+cls+'">'+fmt(t.amount)+'</td>';
+      html+='<td style="padding:5px;border:1px solid var(--glass-b)">'+esc(fr.name)+'</td>';
+      html+='<td style="padding:5px;border:1px solid var(--glass-b)">'+(to?esc(to.name):'—')+'</td>';
+      html+='<td style="padding:5px;border:1px solid var(--glass-b)">'+esc(extra||'—')+'</td>';
+      html+='<td style="padding:5px;border:1px solid var(--glass-b)">'+esc(t.desc||'—')+'</td>';
+      html+='<td style="padding:5px;border:1px solid var(--glass-b);text-align:center">'+esc(t._userName||'—')+'</td>';
+      html+='</tr>';
+    });
+    html+='</tbody></table></div>';
+    html+='<div style="margin-top:12px;padding:10px;background:rgba(99,102,241,.1);border-radius:10px;font-size:12px;line-height:2">';
+    html+='<div style="display:flex;justify-content:space-between"><span>📥 جمع درآمد:</span><b class="inc">'+fmt(totalInc)+' تومان</b></div>';
+    html+='<div style="display:flex;justify-content:space-between"><span>📤 جمع هزینه:</span><b class="exp">'+fmt(totalExp)+' تومان</b></div>';
+    html+='<div style="display:flex;justify-content:space-between"><span>🔄 جمع انتقال:</span><b class="net">'+fmt(totalTrf)+' تومان</b></div>';
+    html+='<div style="display:flex;justify-content:space-between;border-top:1px solid var(--glass-b);margin-top:6px;padding-top:6px"><span>💰 مانده (درآمد - هزینه):</span><b class="net">'+fmt(totalInc-totalExp)+' تومان</b></div>';
+    html+='</div>';
+  }
+  html+='</div></div>';
   document.getElementById('repResult').innerHTML=html;
   document.getElementById('print-date').textContent=range.title+' — '+J.full();
   drawRepChart(ud,range);
@@ -1811,9 +1861,124 @@ function drawRepChart(ud,range){
     }
   });
 }
-function printReport(){if(!document.getElementById('repResult').innerHTML.trim()){runReport();}setTimeout(function(){window.print();},300);}
-function emailReport(){if(!document.getElementById('repResult').innerHTML.trim()){runReport();}var body='گزارش مالی\n\n'+document.getElementById('repResult').innerText;window.open('mailto:?subject=گزارش مالی&body='+encodeURIComponent(body));}
-function exportReportCSV(){var ud=DB.ud();if(!ud)return;var r=getReportRange();var txs=ud.transactions.filter(function(t){return t.date>=r.d1&&t.date<=r.d2;});var csv='\uFEFF';csv+='تاریخ,ساعت,نوع,مبلغ,ارز,مبدأ,مقصد,منبع/دسته,توضیح\n';txs.forEach(function(t){var fr=findTxEntityInfo(t,'from',ud);var to=t.type==='transfer'?findTxEntityInfo(t,'to',ud):null;var typeN=t.type==='income'?'درآمد':t.type==='expense'?'هزینه':'انتقال';var extra='';if(t.type==='income'){var s=ud.sources.find(function(x){return x.id===t.sourceId;});extra=s?s.name:'';}else if(t.type==='expense'){var c=ud.categories.find(function(x){return x.id===t.categoryId;});extra=c?c.name:'';}csv+=[J.toJ(t.date),t.time||'',typeN,t.amount,'IRT',fr.name,(to?to.name:''),extra,(t.desc||'')].map(function(v){return'"'+String(v).replace(/"/g,'""')+'"';}).join(',')+'\n';});var blob=new Blob([csv],{type:'text/csv;charset=utf-8'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='report_'+J.todayStr().replace(/\//g,'-')+'.csv';a.click();URL.revokeObjectURL(url);toast('✅ دانلود شد');}
+function printReport(){
+  if(!document.getElementById('repResult').innerHTML.trim()){runReport();}
+  setTimeout(function(){
+    var st=document.getElementById('print-statement-style');
+    if(!st){st=document.createElement('style');st.id='print-statement-style';document.head.appendChild(st);}
+    st.textContent='@media print{'+
+      '#mc,#md,#cal,#toast,.nav,.hd,.calc-fab,.no-print{display:none!important}'+
+      'body{background:#fff!important;color:#000!important;background-image:none!important}'+
+      '#app{background:#fff!important;box-shadow:none!important;border:none!important;width:100%!important;max-width:100%!important;min-width:0!important}'+
+      '.pg{padding:0!important}.pg:not(.on){display:none!important}'+
+      '.card{background:#fff!important;border:1px solid #ccc!important;page-break-inside:avoid;margin-bottom:8px!important;box-shadow:none!important}'+
+      '.card-body{max-height:none!important;padding:0 8px 8px!important;overflow:visible!important}'+
+      '.card-hdr{background:#eee!important;padding:6px!important}.card-hdr h3{color:#000!important;font-size:12px!important}'+
+      '.stat{background:#f5f5f5!important;color:#000!important;border:1px solid #ddd!important}'+
+      '.inc{color:#059669!important}.exp{color:#dc2626!important}.net{color:#0369a1!important}'+
+      'table{border-collapse:collapse!important;width:100%!important;font-size:9px!important}'+
+      'thead{display:table-header-group}tr{page-break-inside:avoid}'+
+      'th,td{border:1px solid #666!important;padding:3px!important;color:#000!important;word-break:break-word;vertical-align:top}'+
+      'th{background:#ddd!important;font-weight:700!important}'+
+      '.tx{border:1px solid #ddd!important;background:#fff!important;page-break-inside:avoid;margin-bottom:4px!important}'+
+      '*{color:#000!important}'+
+      '@page{size:A4 landscape;margin:8mm}'+
+      '.print-header{display:block!important;text-align:center;padding:10px 0;border-bottom:2px solid #333;margin-bottom:10px}'+
+      '}';
+    document.getElementById('print-date').textContent=(typeof getReportRange==='function'?getReportRange().title:'')+' — '+J.full();
+    window.print();
+  },300);
+}
+
+
+
+function emailReport(){
+  var ud=DB.ud();if(!ud)return;
+  var r=getReportRange();
+  var txs=ud.transactions.filter(function(t){return t.date>=r.d1&&t.date<=r.d2;});
+  txs.sort(function(a,b){return(a.date+(a.time||'')).localeCompare(b.date+(b.time||''));});
+  var typeNames={income:'درآمد',expense:'هزینه',transfer:'انتقال',rollover:'—'};
+  var lines=[];
+  lines.push('گزارش مالی — '+r.title);
+  lines.push('تاریخ گزارش: '+J.full());
+  lines.push('تعداد تراکنش: '+txs.length);
+  lines.push('');
+  lines.push(['#','تاریخ','ساعت','نوع','مبلغ','مبدأ','مقصد','منبع/دسته','توضیح','کاربر'].join(' | '));
+  lines.push('----------------------------------------------------------------------');
+  var ti=0,te=0,tt=0;
+  txs.forEach(function(t,i){
+    var fr=findTxEntityInfo(t,'from',ud);
+    var to=(t.type==='transfer')?findTxEntityInfo(t,'to',ud):null;
+    var extra='';
+    if(t.type==='income'){var s=ud.sources.find(function(x){return x.id===t.sourceId;});extra=s?s.name:'';}
+    else if(t.type==='expense'){var c=ud.categories.find(function(x){return x.id===t.categoryId;});extra=c?c.name:'';}
+    if(t.type==='income')ti+=t.amount;else if(t.type==='expense')te+=t.amount;else if(t.type==='transfer')tt+=t.amount;
+    lines.push([i+1,J.toJ(t.date),t.time||'',typeNames[t.type]||t.type,fmt(t.amount),fr.name,to?to.name:'',extra,t.desc||'',t._userName||''].join(' | '));
+  });
+  lines.push('----------------------------------------------------------------------');
+  lines.push('جمع درآمد: '+fmt(ti)+' تومان');
+  lines.push('جمع هزینه: '+fmt(te)+' تومان');
+  lines.push('جمع انتقال: '+fmt(tt)+' تومان');
+  lines.push('مانده (درآمد - هزینه): '+fmt(ti-te)+' تومان');
+  lines.push('');
+  lines.push('⚠️ برای دریافت فایل، ابتدا دکمه "Excel" را بزنید و فایل CSV را دانلود کنید، سپس آن را به این ایمیل ضمیمه کنید.');
+  var body=lines.join('\n');
+  var subject='گزارش مالی — '+r.title+' — '+J.full();
+  window.location.href='mailto:?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+  setTimeout(function(){
+    if(confirm('آیا فایل CSV گزارش نیز دانلود شود تا آن را ضمیمه ایمیل کنید؟')){
+      exportReportCSV();
+    }
+  },500);
+}
+
+
+
+
+function exportReportCSV(){
+  var ud=DB.ud();if(!ud)return;
+  var r=getReportRange();
+  var txs=ud.transactions.filter(function(t){return t.date>=r.d1&&t.date<=r.d2;});
+  txs.sort(function(a,b){return(a.date+(a.time||'')).localeCompare(b.date+(b.time||''));});
+  var typeNames={income:'درآمد',expense:'هزینه',transfer:'انتقال',rollover:'—'};
+  var csv='\uFEFF';
+  csv+='"گزارش مالی — '+r.title+'"\n';
+  csv+='"تاریخ گزارش: '+J.full()+'"\n';
+  csv+='"تعداد تراکنش: '+txs.length+'"\n\n';
+  var headers=['#','تاریخ','ساعت','نوع','مبلغ (تومان)','مبدأ','مقصد','منبع/دسته','توضیح','کاربر'];
+  csv+=headers.map(function(h){return'"'+h.replace(/"/g,'""')+'"';}).join(',')+'\n';
+  var totalIncome=0,totalExpense=0,totalTransfer=0;
+  txs.forEach(function(t,i){
+    var fr=findTxEntityInfo(t,'from',ud);
+    var to=(t.type==='transfer')?findTxEntityInfo(t,'to',ud):null;
+    var extra='';
+    if(t.type==='income'){var s=ud.sources.find(function(x){return x.id===t.sourceId;});extra=s?s.name:'';}
+    else if(t.type==='expense'){var c=ud.categories.find(function(x){return x.id===t.categoryId;});extra=c?c.name:'';}
+    if(t.type==='income')totalIncome+=t.amount;
+    else if(t.type==='expense')totalExpense+=t.amount;
+    else if(t.type==='transfer')totalTransfer+=t.amount;
+    var row=[i+1,J.toJ(t.date),t.time||'',typeNames[t.type]||t.type,t.amount,fr.name,to?to.name:'',extra,t.desc||'',t._userName||''];
+    csv+=row.map(function(v){return'"'+String(v).replace(/"/g,'""')+'"';}).join(',')+'\n';
+  });
+  csv+='\n';
+  csv+='"جمع درآمد",'+totalIncome+'\n';
+  csv+='"جمع هزینه",'+totalExpense+'\n';
+  csv+='"جمع انتقال",'+totalTransfer+'\n';
+  csv+='"مانده (درآمد - هزینه)",'+(totalIncome-totalExpense)+'\n';
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;
+  a.download='report_'+J.todayStr().replace(/\//g,'-')+'.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('✅ فایل اکسل دانلود شد');
+}
+
+
+
+
+
 
 function rRem(){var ud=DB.ud();if(!ud)return;var el=document.getElementById('reml');if(!ud.reminders.length){el.innerHTML='<div class="empty">یادآوری نداری</div>';return;}var ic={bill:'📄',installment:'💳',check:'📝',loan:'🏦',subscription:'🔄',other:'📌'};var sorted=ud.reminders.slice().sort(function(a,b){return a.dueJalali.localeCompare(b.dueJalali);});el.innerHTML=sorted.map(function(r){var p=r.dueJalali.split('/').map(Number);var g=J.j2g(p[0],p[1],p[2]);var dd=new Date(g[0],g[1]-1,g[2]);var td=new Date();td.setHours(0,0,0,0);var days=Math.round((dd-td)/86400000);var cls='',st='';if(r.isPaid)st='✅ پرداخت‌شده';else if(days<0){cls='e';st='🔴 '+Math.abs(days)+' روز معوق';}else if(days===0)st='🟡 امروز!';else if(days===1)st='🟠 فردا!';else if(days===7)st='📅 یک هفته';else if(days<=3){cls='t';st='🟡 '+days+' روز';}else st='⏳ '+days+' روز';var acts;if(DB.isFamilyView()){acts='<span style="font-size:10px;color:#c4b5fd;font-weight:700">👤 '+esc(r._userName)+'</span> ';if(!r.isPaid)acts+='<button class="b3" onclick="payRem('+r._origId+','+r._userId+')">✅</button>';acts+='<button class="b5" onclick="showRemForm('+r._origId+','+r._userId+')">✏️</button>';acts+='<button class="b4" onclick="delRem('+r._origId+','+r._userId+')">🗑️</button>';}else{acts=(!r.isPaid?'<button class="b3" onclick="payRem('+r.id+')">✅</button>':'')+'<button class="b5" onclick="showRemForm('+r.id+')">✏️</button>'+'<button class="b4" onclick="delRem('+r.id+')">🗑️</button>';}return'<div class="tx '+cls+'"><div class="t1"><b>'+(ic[r.type]||'📌')+' '+esc(r.title)+'</b><span>'+r.dueJalali+'</span></div><div class="t2">'+fmt(r.amount)+' '+esc(r.currency)+' • '+st+'</div>'+(r.checkNum?'<div class="t2">🔢 '+esc(r.checkNum)+' • 🏦 '+esc(r.bank)+'</div>':'')+'<div class="acts">'+acts+'</div></div>';}).join('');}
 function showRemForm(editId,editUid){var isFam=DB.isFamilyView();var targetUid=isFam?DB.pickUser(editUid):DB.data.currentUserId;if(targetUid==null){toast('کاربری نیست','err');return;}var ud=DB.udFor(targetUid);if(!ud){toast('داده','err');return;}var r=editId?ud.reminders.find(function(x){return x.id===editId;}):null;var h='<h3><span>'+(r?'✏️ ویرایش':'➕ یادآور')+'</span><button class="close" onclick="closeM()">×</button></h3>';h+=userPickerHtml(targetUid,'');h+='<label>نوع</label><select id="rt" onchange="toggleRF()">';[['bill','📄 قبض'],['installment','💳 قسط'],['check','📝 چک'],['loan','🏦 وام'],['subscription','🔄 اشتراک'],['other','📌 سایر']].forEach(function(x){h+='<option value="'+x[0]+'"'+((r&&r.type===x[0])?' selected':'')+'>'+x[1]+'</option>';});h+='</select>';h+='<label>عنوان</label><input id="rti" value="'+(r?esc(r.title||''):'')+'">';h+='<label>مبلغ</label><input id="ra" type="number" value="'+(r?r.amount:'')+'">';h+='<label>سررسید</label>'+dateInput('rd',r?r.dueJalali:J.todayStr());h+='<label>تکرار</label><select id="rr"><option value="none"'+(r&&r.repeat==='none'?' selected':'')+'>بدون</option><option value="monthly"'+(r&&r.repeat==='monthly'?' selected':'')+'>ماهانه</option><option value="yearly"'+(r&&r.repeat==='yearly'?' selected':'')+'>سالانه</option></select>';h+='<label>تعداد</label><input id="rt2" type="number" value="'+(r?r.total:1)+'">';h+='<div id="checkFields" style="display:none"><label>شماره چک</label><input id="rcn" value="'+(r&&r.checkNum?esc(r.checkNum):'')+'"><label>بانک</label><input id="rbk" value="'+(r&&r.bank?esc(r.bank):'')+'"></div>';h+='<input type="hidden" id="remId" value="'+(r?r.id:'')+'">';h+='<button class="btn b3" style="margin-top:16px" onclick="saveRem()">💾</button>';openM(h);toggleRF();}
